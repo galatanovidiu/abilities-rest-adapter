@@ -1,0 +1,21 @@
+.DS_Store
+Thumbs.db
+*.log
+/vendor/
+/node_modules/
+
+# Distributable plugin zip built by `npm run plugin-zip` (and by the release CI).
+/abilities-rest-adapter.zip
+
+# composer.lock: dev-only deps; let install resolve it. Not committed.
+/composer.lock
+
+# Local wp-env config (machine-specific plugin paths)
+/.wp-env.override.json
+
+# Test output (keep the directory, ignore generated reports/caches)
+/tests/_output/*
+!/tests/_output/.gitkeep
+
+# Phpactor (editor LSP) local index/config — machine-specific.
+/.phpactor.json

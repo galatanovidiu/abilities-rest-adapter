@@ -1,0 +1,161 @@
+name: Test
+
+# Disable permissions for all available scopes by default.
+permissions: {}
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+  pull_request:
+    types:
+      - opened
+      - synchronize
+
+# Cancel in-progress runs for the same branch / PR.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.head_ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  # Runs the PHP coding standards checks.
+  #
+  # Violations are reported inline with annotations via cs2pr.
+  phpcs:
+    name: Run PHPCS coding standards checks
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: cs2pr
+
+      # This date is used to ensure that the PHPCS cache is cleared at least once every week.
+      - name: "Get last Monday's date"
+        id: get-date
+        run: echo "date=$(/bin/date -u --date='last Mon' "+%F")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache PHPCS scan cache
+        uses: actions/cache@v5
+        with:
+          path: tests/_output/phpcs-cache.json
+          key: ${{ runner.os }}-date-${{ steps.get-date.outputs.date }}-phpcs-cache-${{ hashFiles('**/composer.json', '.phpcs.xml.dist') }}
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Run PHPCS
+        id: phpcs
+        run: composer lint -- --report-full --report-checkstyle=./tests/_output/phpcs-report.xml
+
+      - name: Show PHPCS results in PR
+        if: ${{ always() && steps.phpcs.outcome == 'failure' }}
+        run: cs2pr ./tests/_output/phpcs-report.xml
+
+  # Runs PHP static analysis.
+  #
+  # Violations are reported inline with annotations via cs2pr.
+  phpstan:
+    name: Run PHP static analysis
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+          coverage: none
+          tools: cs2pr
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Make Composer packages available globally
+        run: echo "${PWD}/vendor/bin" >> "$GITHUB_PATH"
+
+      - name: Run PHP static analysis
+        id: phpstan
+        run: phpstan analyse --memory-limit=1G -vvv --error-format=checkstyle | cs2pr
+
+  # Runs the PHPUnit tests inside the wp-env Docker environment, once per
+  # supported PHP version. WP_ENV_PHP_VERSION sets the PHP the tests run on.
+  #
+  # Min supported PHP is 7.4 (WordPress core's floor); the matrix covers every
+  # major release through 8.5. The Abilities API ships in WordPress 6.9 core and
+  # this env tracks current trunk (7.1-alpha via WordPress/WordPress#master), so
+  # the 7.1 `wp_ability_permission_result` filter is available.
+  #
+  # fail-fast: false so one version's failure (e.g. a wp-env PHP image not yet
+  # published for a brand-new release) does not cancel the others.
+  phpunit:
+    name: PHPUnit (PHP ${{ matrix.php }})
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['7.4', '8.0', '8.1', '8.2', '8.3', '8.4', '8.5']
+    env:
+      WP_ENV_PHP_VERSION: ${{ matrix.php }}
+
+    steps:
+      - name: Configure environment variables
+        run: |
+          echo "PHP_FPM_UID=$(id -u)" >> "$GITHUB_ENV"
+          echo "PHP_FPM_GID=$(id -g)" >> "$GITHUB_ENV"
+
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '${{ matrix.php }}'
+          coverage: none
+          tools: composer
+
+      - name: Install Composer dependencies
+        run: composer install --no-interaction --no-progress
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Start the wp-env test environment
+        run: npm run wp-env:test start
+
+      - name: Log versions
+        run: |
+          npm run wp-env:test -- run cli php -- -v
+          npm run wp-env:test -- run cli wp core version
+
+      - name: Run PHPUnit
+        run: npm run test:php
