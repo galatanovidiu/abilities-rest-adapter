@@ -52,9 +52,10 @@ spl_autoload_register(
 	}
 );
 
-// Boot. Phase 2 wires the public `wp_register_ability_from_rest_route()` helper,
-// the `WP_REST_Ability` subclass, and the fallback `rest` category here. The
-// Abilities API ships with WordPress 6.9; without it there is nothing to register.
+// Boot. Loads the public `wp_register_ability_from_rest_route()` helper. The
+// `WP_REST_Ability` engine class is autoloaded on demand. The Abilities API ships
+// with WordPress 6.9; without it there is nothing to register. The adapter does
+// not register a category — each ability declares an already-registered one.
 add_action(
 	'plugins_loaded',
 	static function (): void {
@@ -62,6 +63,6 @@ add_action(
 			return;
 		}
 
-		// TODO Phase 2: register the fallback `rest` category and the public API.
+		require_once ABILITIES_REST_ADAPTER_DIR . 'includes/api.php';
 	}
 );
