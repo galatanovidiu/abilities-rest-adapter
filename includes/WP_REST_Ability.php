@@ -1213,15 +1213,21 @@ class WP_REST_Ability extends WP_Ability {
 	}
 
 	/**
-	 * Whether a capture sub-pattern accepts only digits.
+	 * Whether a capture sub-pattern is a recognized digit-only form.
+	 *
+	 * Recognizes `\d`, `[\d]`, and `[0-9]` with an optional `+`/`*` or
+	 * `{n}`/`{n,}`/`{n,m}` quantifier. This is a conservative classifier for the
+	 * schema type hint only: an unrecognized but genuinely numeric pattern falls
+	 * back to `string`, which still accepts the value at dispatch — it just
+	 * advertises a looser type. It never widens a non-numeric pattern to `integer`.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @param string $subpattern The capture's regex sub-pattern.
-	 * @return bool True if the sub-pattern is numeric-only.
+	 * @return bool True if the sub-pattern is a recognized digit-only form.
 	 */
 	protected function is_numeric_subpattern( string $subpattern ): bool {
-		return (bool) preg_match( '/^(?:\[\\\\d\]|\\\\d|\[0-9\])[+*]?$/', $subpattern );
+		return (bool) preg_match( '/^(?:\[\\\\d\]|\\\\d|\[0-9\])(?:[+*]|\{\d+(?:,\d*)?\})?$/', $subpattern );
 	}
 
 	/**

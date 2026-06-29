@@ -125,4 +125,11 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 		$this->assertFalse( $this->is_numeric( '[a-z]+' ) );
 		$this->assertFalse( $this->is_numeric( '[^/]+' ) );
 	}
+
+	public function test_is_numeric_subpattern_recognizes_brace_quantifiers(): void {
+		$this->assertTrue( $this->is_numeric( '\d{1,}' ) );
+		$this->assertTrue( $this->is_numeric( '[\d]{1,6}' ) );
+		$this->assertTrue( $this->is_numeric( '[0-9]{4}' ) );
+		$this->assertFalse( $this->is_numeric( '[a-z]{1,6}' ), 'a brace quantifier does not make a non-numeric class numeric' );
+	}
 }
