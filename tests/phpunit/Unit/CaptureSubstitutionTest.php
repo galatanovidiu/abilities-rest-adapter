@@ -101,8 +101,8 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * B1: a char class with a leading `]` (where `]` is a literal member) must not
-	 * end the scan early on the `)` embedded in the class.
+	 * A char class with a leading `]` (where `]` is a literal member) must not end
+	 * the scan early on the `)` embedded in the class.
 	 */
 	public function test_char_class_with_leading_bracket_does_not_close_early(): void {
 		list( $path ) = $this->substitute( '/wp/v2/x/(?P<id>[])a-z]+)', array( 'id' => 'abc' ) );

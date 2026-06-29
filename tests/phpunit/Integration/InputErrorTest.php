@@ -59,7 +59,7 @@ final class InputErrorTest extends AbilityTestCase {
 	}
 
 	/**
-	 * A2: a scalar capture that does not fit the route pattern is a route-not-found
+	 * A scalar capture that does not fit the route pattern is a route-not-found
 	 * verdict, not an authz verdict — over HTTP the path would 404 before the
 	 * permission callback runs, so the standalone check must say so faithfully.
 	 *
