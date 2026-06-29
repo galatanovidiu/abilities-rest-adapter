@@ -1,6 +1,6 @@
 # Abilities REST Adapter
 
-Define a WordPress [Abilities API](https://make.wordpress.org/core/) ability by **reusing an existing REST API route** — its schema, validation, permission check, and handler — instead of re-implementing them. The adapter dispatches the real route via `rest_do_request()`, so the ability stays behaviorally equivalent to the endpoint.
+Define a WordPress [Abilities API](https://github.com/WordPress/abilities-api) ability by **reusing an existing REST API route** — its schema, validation, permission check, and handler — instead of re-implementing them. The adapter dispatches the real route via `rest_do_request()`, so the ability stays behaviorally equivalent to the endpoint.
 
 ```php
 wp_register_ability_from_rest_route( 'my-plugin/list-posts', array(
@@ -13,6 +13,8 @@ wp_register_ability_from_rest_route( 'my-plugin/list-posts', array(
 ```
 
 The signature mirrors core's `wp_register_ability( $name, $args )`. `route`, `method`, `label`, `description`, and `category` are required.
+
+**See [`docs/usage.md`](docs/usage.md)** for the full guide: the four seams (`input_callback` / `output_callback` / `input_schema` / `output_schema`), collections, the write-safety rule, the permission-error limitation, and the `wp ability describe-route` command.
 
 - **Reuse, don't re-implement.** Permission is the route's real check; output is the route's real body. A collection synthesizes `{ items, total, total_pages }` from the `X-WP-Total` headers.
 - **Facilitate, don't force.** The adapter gives the developer seams instead of baking in opinions:
