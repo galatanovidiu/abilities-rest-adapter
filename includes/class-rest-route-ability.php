@@ -146,10 +146,12 @@ class Rest_Route_Ability extends WP_Ability {
 	 *
 	 * Safety annotations follow the fail-safe rule: a GET is marked
 	 * `readonly` unless the developer explicitly passes `readonly => false` (a GET
-	 * with side effects), and a write is always marked not-readonly. A write that
-	 * omits `destructive`/`idempotent` still registers but triggers `_doing_it_wrong`
-	 * and leaves them unset (`null` = "unknown", which a consumer treats as ask-first
-	 * — never a false "safe").
+	 * with side effects), and a write is always marked not-readonly. A read-only GET
+	 * is also filled with `destructive => false` and `idempotent => true` (a read is
+	 * both by definition), so its annotations are complete. A write that omits
+	 * `destructive`/`idempotent` still registers but triggers `_doing_it_wrong` and
+	 * leaves them unset (`null` = "unknown", which a consumer treats as ask-first —
+	 * never a false "safe").
 	 *
 	 * @since 0.1.0
 	 *
@@ -230,6 +232,22 @@ class Rest_Route_Ability extends WP_Ability {
 		} else {
 			$opted_out               = array_key_exists( 'readonly', $annotations ) && false === $annotations['readonly'];
 			$annotations['readonly'] = ! $opted_out;
+		}
+
+		// A genuine read is non-destructive and idempotent by definition, so fill both
+		// when the ability ends up read-only. This keeps the registered annotations
+		// complete: without it a GET carries only `readonly`, and core's annotation
+		// normalization leaves `destructive`/`idempotent` as `null` ("unknown"), which a
+		// consumer treats as ask-first — wrong for a plain read. A GET flagged
+		// `readonly => false` (known side effects) is treated like a write: these stay
+		// the developer's to declare. Existing developer values are preserved.
+		if ( true === $annotations['readonly'] ) {
+			if ( ! array_key_exists( 'destructive', $annotations ) ) {
+				$annotations['destructive'] = false;
+			}
+			if ( ! array_key_exists( 'idempotent', $annotations ) ) {
+				$annotations['idempotent'] = true;
+			}
 		}
 
 		$meta                = isset( $args['meta'] ) && is_array( $args['meta'] ) ? $args['meta'] : array();
