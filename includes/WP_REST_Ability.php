@@ -964,8 +964,27 @@ class WP_REST_Ability extends WP_Ability {
 
 		$url_params = array();
 		$params     = $input;
-		foreach ( $consumed as $name ) {
-			$url_params[ $name ] = $input[ $name ];
+		foreach ( $consumed as $name => $encoded ) {
+			// Mirror HTTP. Core derives url_params from the route-regex match against the
+			// URL path, which dispatch never decodes (see encode_capture()), so the value
+			// the permission callback reads is the path-encoded form, not the raw input.
+			// And a value encode_capture() had to escape cannot satisfy the capture's
+			// sub-pattern, so over HTTP no route matches this path — a `rest_no_route` 404
+			// before any permission callback runs. Return that same error so a standalone
+			// check_permissions() never reports an authz verdict for a request HTTP would
+			// never dispatch (dispatch returns the identical error, so execute() is unchanged).
+			if ( (string) $input[ $name ] !== $encoded ) {
+				return new WP_Error(
+					'rest_no_route',
+					sprintf(
+						/* translators: %s: path parameter name. */
+						__( 'The "%s" path parameter does not fit the route pattern; no REST route matches it.', 'abilities-rest-adapter' ),
+						$name
+					),
+					array( 'status' => 404 )
+				);
+			}
+			$url_params[ $name ] = $encoded;
 			unset( $params[ $name ] );
 		}
 
@@ -993,7 +1012,8 @@ class WP_REST_Ability extends WP_Ability {
 	 *
 	 * @param string               $route The registered route regex.
 	 * @param array<string, mixed> $input The ability input.
-	 * @return array{0: string, 1: string[]}|\WP_Error The `[path, consumed_capture_names]`, or a `WP_Error`.
+	 * @return array{0: string, 1: array<string, string>}|\WP_Error The `[path, consumed]` where `consumed` maps each
+	 *                                                              consumed capture name to its encoded value, or a `WP_Error`.
 	 */
 	protected function substitute_captures( string $route, array $input ) {
 		$result   = '';
@@ -1038,8 +1058,9 @@ class WP_REST_Ability extends WP_Ability {
 			$subpattern = substr( $route, $subpattern_start, $group_end - 1 - $subpattern_start );
 
 			if ( 0 === $depth && array_key_exists( $name, $input ) && is_scalar( $input[ $name ] ) ) {
-				$result    .= $this->encode_capture( (string) $input[ $name ], $subpattern );
-				$consumed[] = $name;
+				$encoded           = $this->encode_capture( (string) $input[ $name ], $subpattern );
+				$result           .= $encoded;
+				$consumed[ $name ] = $encoded;
 			} elseif ( 0 === $depth && array_key_exists( $name, $input ) ) {
 				$invalid[] = $name;
 				$result   .= substr( $route, $group_start, $group_end - $group_start );

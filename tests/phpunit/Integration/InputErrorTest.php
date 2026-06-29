@@ -59,6 +59,23 @@ final class InputErrorTest extends AbilityTestCase {
 	}
 
 	/**
+	 * A2: a scalar capture that does not fit the route pattern is a route-not-found
+	 * verdict, not an authz verdict — over HTTP the path would 404 before the
+	 * permission callback runs, so the standalone check must say so faithfully.
+	 *
+	 * Uses check_permissions() (which bypasses input validation) to drive a value
+	 * the numeric capture forbids straight into capture substitution.
+	 */
+	public function test_scalar_capture_that_misfits_the_pattern_is_route_not_found(): void {
+		$post = $this->register_ability( 'probe/post-misfit', array( 'route' => self::POST_ROUTE, 'method' => 'GET' ) );
+		$perm = $post->check_permissions( array( 'id' => '12/3' ) );
+
+		$this->assertTrue( is_wp_error( $perm ) );
+		$this->assertSame( 'rest_no_route', $perm->get_error_code(), 'a misfitting capture would not route over HTTP' );
+		$this->assertSame( 404, (int) $perm->get_error_data()['status'] );
+	}
+
+	/**
 	 * Review #14: a not-found route surfaces the real error and keeps input open.
 	 */
 	public function test_not_found_route_surfaces_real_error(): void {
