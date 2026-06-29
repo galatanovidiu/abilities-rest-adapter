@@ -101,6 +101,23 @@ final class InputErrorTest extends AbilityTestCase {
 	}
 
 	/**
+	 * A route with no required input accepts a no-argument call. `execute()` with no
+	 * argument normalizes the input to the schema's top-level `default` (an empty
+	 * object); without it the input would stay null and fail the schema's
+	 * `type: object` as a spurious `ability_invalid_input`.
+	 */
+	public function test_no_arg_call_on_optional_route_is_accepted(): void {
+		$posts  = $this->register_ability( 'probe/posts-noarg', array( 'route' => '/wp/v2/posts', 'method' => 'GET' ) );
+		$result = $posts->execute();
+
+		$this->assertFalse(
+			is_wp_error( $result ),
+			is_wp_error( $result ) ? $result->get_error_code() : 'a no-argument call on an all-optional route is accepted'
+		);
+		$this->assertIsArray( $result );
+	}
+
+	/**
 	 * A not-found route surfaces the real error through execute() and keeps input open.
 	 */
 	public function test_not_found_route_surfaces_real_error(): void {
