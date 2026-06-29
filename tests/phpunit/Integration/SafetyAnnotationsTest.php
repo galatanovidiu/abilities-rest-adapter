@@ -119,4 +119,41 @@ final class SafetyAnnotationsTest extends AbilityTestCase {
 
 		$this->assertTrue( $read->get_meta_item( 'annotations' )['readonly'], 'a padded GET is read-only' );
 	}
+
+	/**
+	 * A read-only GET is completed with `destructive:false` and `idempotent:true` — a
+	 * read is both by definition — so its annotations carry no `null` "unknown" hint a
+	 * consumer would treat as ask-first.
+	 */
+	public function test_read_only_get_is_non_destructive_and_idempotent(): void {
+		$read = $this->register_ability(
+			'probe/read-complete',
+			array( 'route' => '/wp/v2/posts', 'method' => 'GET' )
+		);
+
+		$annotations = $read->get_meta_item( 'annotations' );
+		$this->assertTrue( $annotations['readonly'], 'a GET is read-only' );
+		$this->assertFalse( $annotations['destructive'], 'a read is non-destructive' );
+		$this->assertTrue( $annotations['idempotent'], 'a read is idempotent' );
+	}
+
+	/**
+	 * A developer's own `destructive`/`idempotent` on a read is preserved, not
+	 * overwritten by the read-only fill.
+	 */
+	public function test_read_keeps_developer_destructive_and_idempotent(): void {
+		$read = $this->register_ability(
+			'probe/read-declared',
+			array(
+				'route'  => '/wp/v2/posts',
+				'method' => 'GET',
+				'meta'   => array( 'annotations' => array( 'destructive' => true, 'idempotent' => false ) ),
+			)
+		);
+
+		$annotations = $read->get_meta_item( 'annotations' );
+		$this->assertTrue( $annotations['readonly'], 'a GET is still read-only' );
+		$this->assertTrue( $annotations['destructive'], 'developer destructive:true on a read is preserved' );
+		$this->assertFalse( $annotations['idempotent'], 'developer idempotent:false on a read is preserved' );
+	}
 }
