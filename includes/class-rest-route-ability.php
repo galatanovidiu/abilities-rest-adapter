@@ -362,7 +362,23 @@ class Rest_Route_Ability extends WP_Ability {
 	 */
 	public function get_input_schema(): array {
 		$this->resolve();
-		return $this->input_schema;
+
+		/**
+		 * Filters the derived input schema for a REST-route ability.
+		 *
+		 * The adapter derives the schema from the route's args and path captures; this
+		 * lets a consumer add properties the route itself does not declare — e.g. a
+		 * multisite policy layer injecting an optional `blog_id`. The schema is derived
+		 * lazily and is not present in the registration args, so a `wp_register_ability_args`
+		 * filter cannot reach it; this is the seam that can.
+		 *
+		 * @since 0.1.0
+		 *
+		 * @param array<string,mixed> $schema    The derived input schema.
+		 * @param string              $name      The ability name.
+		 * @param array<string,mixed> $rest_args The developer's registration args.
+		 */
+		return apply_filters( 'abilities_rest_adapter_input_schema', $this->input_schema, $this->get_name(), $this->rest_args );
 	}
 
 	/**
@@ -417,6 +433,48 @@ class Rest_Route_Ability extends WP_Ability {
 	 */
 	protected function do_execute( $input = null ) {
 		$this->resolve();
+
+		/**
+		 * Filters a wrapper around dispatch for a REST-route ability.
+		 *
+		 * A consumer can run dispatch inside a context and/or adjust the input before
+		 * it reaches the route — e.g. a multisite policy layer that opens a balanced
+		 * `switch_to_blog()` and strips its own `blog_id` from the input. Because the
+		 * adapter is guard-only (its real permission runs at dispatch, inside
+		 * `rest_do_request()`), wrapping dispatch alone runs BOTH the route's permission
+		 * check and the handler in the consumer's context — no split-brain. The wrapper
+		 * is `fn( callable $proceed, mixed $input ): mixed`; `$proceed( $input )` performs
+		 * the normal dispatch. Return `null` (the default) to dispatch unwrapped.
+		 *
+		 * @since 0.1.0
+		 *
+		 * @param callable|null $wrapper The dispatch wrapper, or null for none.
+		 * @param string        $name    The ability name.
+		 * @param mixed         $input   The validated ability input.
+		 */
+		$wrapper = apply_filters( 'abilities_rest_adapter_dispatch_wrapper', null, $this->get_name(), $input );
+		if ( is_callable( $wrapper ) ) {
+			$proceed = function ( $in = null ) {
+				return $this->dispatch_internally( $in );
+			};
+			return $wrapper( $proceed, $input );
+		}
+
+		return parent::do_execute( $input );
+	}
+
+	/**
+	 * Performs the normal dispatch (the parent's `do_execute`).
+	 *
+	 * Extracted so an `abilities_rest_adapter_dispatch_wrapper` can call it as the
+	 * `$proceed` step from a closure (where `parent::` is not available).
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param mixed $input Optional. The input data for the ability. Default `null`.
+	 * @return mixed|\WP_Error The dispatched response data, or a `WP_Error`.
+	 */
+	private function dispatch_internally( $input = null ) {
 		return parent::do_execute( $input );
 	}
 
