@@ -139,6 +139,63 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 		$this->assertSame( '{"type":"object","properties":{}}', wp_json_encode( $clean ) );
 	}
 
+	public function test_empty_object_keywords_normalize_to_object(): void {
+		$clean = $this->clean(
+			array(
+				'type'                 => 'object',
+				'additionalProperties' => array( 'sanitize_callback' => 'absint' ),
+				'patternProperties'    => array(),
+				'items'                => array( 'context' => array( 'view' ) ),
+			),
+			false
+		);
+
+		$this->assertInstanceOf( stdClass::class, $clean['additionalProperties'], 'emptied additionalProperties becomes {}' );
+		$this->assertInstanceOf( stdClass::class, $clean['patternProperties'], 'empty patternProperties becomes {}' );
+		$this->assertInstanceOf( stdClass::class, $clean['items'], 'emptied items becomes {}' );
+	}
+
+	public function test_boolean_additional_properties_is_left_untouched(): void {
+		$clean = $this->clean(
+			array(
+				'type'                 => 'object',
+				'additionalProperties' => false,
+			),
+			false
+		);
+
+		$this->assertFalse( $clean['additionalProperties'], 'a boolean additionalProperties is not turned into {}' );
+	}
+
+	public function test_emptied_combinator_members_are_dropped(): void {
+		$clean = $this->clean(
+			array(
+				'oneOf' => array(
+					array( 'type' => 'string' ),
+					array( 'sanitize_callback' => 'absint' ),
+				),
+			),
+			false
+		);
+
+		$this->assertCount( 1, $clean['oneOf'], 'the all-stripped member is dropped' );
+		$this->assertSame( array( 'type' => 'string' ), $clean['oneOf'][0] );
+	}
+
+	public function test_combinator_dropped_when_all_members_empty(): void {
+		$clean = $this->clean(
+			array(
+				'type'  => 'string',
+				'anyOf' => array(
+					array( 'validate_callback' => 'rest_validate_request_arg' ),
+				),
+			),
+			false
+		);
+
+		$this->assertArrayNotHasKey( 'anyOf', $clean, 'a combinator with no surviving members is dropped' );
+	}
+
 	public function test_drops_closure_values(): void {
 		$clean = $this->clean(
 			array(

@@ -751,10 +751,42 @@ class WP_REST_Ability extends WP_Ability {
 			$clean[ $key ] = $value;
 		}
 
-		// Keep `properties` a JSON object even when empty; AJV and other strict
-		// validators reject `properties: []`.
-		if ( array_key_exists( 'properties', $clean ) && is_array( $clean['properties'] ) && empty( $clean['properties'] ) ) {
-			$clean['properties'] = new stdClass();
+		// Keep object-valued schema keywords as JSON objects even when they clean out
+		// to empty. PHP serializes an empty array as `[]`, but JSON Schema expects `{}`
+		// here and strict validators (AJV) reject `properties: []`,
+		// `additionalProperties: []`, `items: []`, etc. A boolean `additionalProperties`
+		// is left untouched (it is not an array).
+		foreach ( array( 'properties', 'patternProperties', 'additionalProperties', 'items' ) as $object_keyword ) {
+			if ( ! array_key_exists( $object_keyword, $clean ) || ! is_array( $clean[ $object_keyword ] ) || ! empty( $clean[ $object_keyword ] ) ) {
+				continue;
+			}
+
+			$clean[ $object_keyword ] = new stdClass();
+		}
+
+		// Drop `oneOf`/`anyOf`/`allOf` members that cleaned out to empty: an empty `{}`
+		// schema matches everything, which would silently defeat the combinator. If a
+		// combinator loses all its members, drop it entirely.
+		foreach ( array( 'oneOf', 'anyOf', 'allOf' ) as $list_keyword ) {
+			if ( ! isset( $clean[ $list_keyword ] ) || ! is_array( $clean[ $list_keyword ] ) ) {
+				continue;
+			}
+
+			$members = array();
+			foreach ( $clean[ $list_keyword ] as $member ) {
+				if ( is_array( $member ) && empty( $member ) ) {
+					continue;
+				}
+
+				$members[] = $member;
+			}
+
+			if ( empty( $members ) ) {
+				unset( $clean[ $list_keyword ] );
+				continue;
+			}
+
+			$clean[ $list_keyword ] = $members;
 		}
 
 		return $clean;
