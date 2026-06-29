@@ -35,14 +35,9 @@ use stdClass;
  * - {@see do_execute()}        — dispatches the real route via `rest_do_request()`.
  *
  * The adapter facilitates adaptation; it does not resolve every problem centrally.
- * Decisions only the developer can make are made at registration via the args:
- * `input_callback` transforms the request params before dispatch (set `_fields`,
- * pin `context`, inject fixed params, reshape) and `output_callback` reshapes a
- * successful response (it runs last, over the default body or collection
- * envelope). Both may return a `WP_Error` to reject the call. `input_schema` and
- * `output_schema` replace the schemas the adapter would otherwise derive from the
- * route; when an `output_callback` is set without an `output_schema`, no output
- * schema is advertised and core skips output validation.
+ * Decisions only the developer can make are made at registration via four optional
+ * args — `input_callback`, `output_callback`, `input_schema`, `output_schema`. See
+ * {@see wp_register_ability_from_rest_route()} and `docs/usage.md` for what each does.
  *
  * The behavioral caveats — the permission phase mirrors per-route checks only (not
  * request-level filters), `execute()` runs the route's `permission_callback` twice,
