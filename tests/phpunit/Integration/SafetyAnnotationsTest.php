@@ -1,11 +1,11 @@
 <?php
 /**
- * Safety-annotation derivation (DSAFE) and review fix #2.
+ * Safety-annotation derivation.
  *
- * Ports the DSAFE section of `spikes/phase2-verify.php` plus review #2: a write
- * without `destructive`/`idempotent` registers but warns and leaves them null
- * (unknown = ask-first, never a false "safe"); `readonly` is always derived from
- * the method, so a developer's `readonly:true` on a write cannot mislabel it.
+ * A write without `destructive`/`idempotent` registers but warns and leaves them
+ * null (unknown = ask-first, never a false "safe"). `readonly` is derived from the
+ * method — forced false for a write, true for a GET unless the developer opts out —
+ * so a developer cannot mislabel a write as safe.
  *
  * @package AbilitiesRestAdapter\Tests
  */

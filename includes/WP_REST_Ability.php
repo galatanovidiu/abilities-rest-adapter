@@ -122,7 +122,7 @@ class WP_REST_Ability extends WP_Ability {
 	 * the safety annotations are derived from the HTTP method. The schema,
 	 * permission, and execution are deferred to {@see resolve()}.
 	 *
-	 * Safety annotations follow the fail-safe rule (DSAFE): a GET is marked
+	 * Safety annotations follow the fail-safe rule: a GET is marked
 	 * `readonly` unless the developer explicitly passes `readonly => false` (a GET
 	 * with side effects), and a write is always marked not-readonly. A write that
 	 * omits `destructive`/`idempotent` still registers but triggers `_doing_it_wrong`
