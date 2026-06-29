@@ -20,7 +20,7 @@ use stdClass;
  *
  * Registration is thin: {@see build_args()} stashes the route, method, and the
  * developer's args and assigns this class via the `ability_class` seam.
- * Resolution is deferred — the route is looked up and the schemas derived on
+ * Resolution is deferred; the route is looked up and the schemas derived on
  * first access to the input/output schema, the permission check, or execution.
  * This removes the ordering dependency between `rest_api_init` and
  * `wp_abilities_api_init`, which both fire lazily with no guaranteed order.
@@ -36,14 +36,13 @@ use stdClass;
  *
  * The adapter facilitates adaptation; it does not resolve every problem centrally.
  * Decisions only the developer can make are made at registration via four optional
- * args — `input_callback`, `output_callback`, `input_schema`, `output_schema`. See
- * {@see wp_register_ability_from_rest_route()} and `docs/usage.md` for what each does.
+ * args: `input_callback`, `output_callback`, `input_schema`, `output_schema`. See
+ * {@see wp_register_ability_from_rest_route()} for what each does.
  *
  * The behavioral caveats — the permission phase mirrors per-route checks only (not
  * request-level filters), `execute()` runs the route's `permission_callback` twice,
  * an `input_callback` runs after input validation, and resolution matches the exact
- * route pattern — are documented in `docs/usage.md` and flagged on the method that
- * enforces each.
+ * route pattern — are flagged on the method that enforces each.
  *
  * @since 0.1.0
  */
