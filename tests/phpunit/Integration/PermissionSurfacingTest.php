@@ -44,7 +44,7 @@ final class PermissionSurfacingTest extends AbilityTestCase {
 	}
 
 	/**
-	 * Registers a route whose permission callback returns bare false.
+	 * Registers the custom routes the permission tests dispatch against.
 	 *
 	 * @return void
 	 */
@@ -56,6 +56,36 @@ final class PermissionSurfacingTest extends AbilityTestCase {
 				'methods'             => 'GET',
 				'callback'            => '__return_empty_array',
 				'permission_callback' => '__return_false',
+			)
+		);
+
+		// A permission callback that returns a truthy-but-not-`true` verdict (an
+		// integer 1). Real dispatch allows it; the adapter must too (F2).
+		register_rest_route(
+			'arat-test/v1',
+			'/truthy',
+			array(
+				'methods'             => 'GET',
+				'callback'            => '__return_empty_array',
+				'permission_callback' => static function () {
+					return 1;
+				},
+			)
+		);
+
+		// A permission callback that allows only when it can read a non-`args`
+		// request attribute (`methods`), present only when the full handler is set
+		// as attributes — as real dispatch does (F1).
+		register_rest_route(
+			'arat-test/v1',
+			'/attr-probe',
+			array(
+				'methods'             => 'GET',
+				'callback'            => '__return_empty_array',
+				'permission_callback' => static function ( $request ) {
+					$attributes = $request->get_attributes();
+					return isset( $attributes['methods'] );
+				},
 			)
 		);
 	}
@@ -120,5 +150,38 @@ final class PermissionSurfacingTest extends AbilityTestCase {
 
 		$data = $perm->get_error_data();
 		$this->assertContains( (int) $data['status'], array( 401, 403 ), 'status from rest_authorization_required_code()' );
+	}
+
+	/**
+	 * F2: a truthy-but-not-`true` permission verdict is allowed through execute().
+	 *
+	 * Dispatch allows any verdict that is not false/null/WP_Error, but
+	 * `WP_Ability::execute()` denies on `true !== $has_permissions`. The adapter
+	 * normalizes the verdict to literal `true` so the call is not wrongly denied.
+	 */
+	public function test_truthy_permission_is_allowed_through_execute(): void {
+		$ability = $this->register_ability( 'probe/truthy', array( 'route' => '/arat-test/v1/truthy', 'method' => 'GET' ) );
+
+		$this->assertTrue( $ability->check_permissions( array() ), 'truthy verdict normalizes to literal true' );
+
+		$exec = $ability->execute( array() );
+		$this->assertFalse( is_wp_error( $exec ), 'execute() allows the call rather than collapsing to ability_invalid_permissions' );
+		$this->assertSame( array(), $exec, 'the route body passes through' );
+	}
+
+	/**
+	 * F1: the permission callback sees the full handler attributes, as over HTTP.
+	 *
+	 * The route's callback allows only when it can read a non-`args` attribute
+	 * (`methods`); that key is present only when the adapter sets the full handler
+	 * as request attributes, mirroring dispatch's `set_attributes( $handler )`.
+	 */
+	public function test_permission_callback_sees_full_handler_attributes(): void {
+		$ability = $this->register_ability( 'probe/attr-probe', array( 'route' => '/arat-test/v1/attr-probe', 'method' => 'GET' ) );
+
+		$this->assertTrue( $ability->check_permissions( array() ), 'full handler attributes are exposed to the permission callback' );
+
+		$exec = $ability->execute( array() );
+		$this->assertFalse( is_wp_error( $exec ), 'execute() is allowed because the synthetic check matches dispatch' );
 	}
 }

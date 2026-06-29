@@ -49,8 +49,11 @@ if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
 	 *     @type string   $category        Required. An already-registered ability category slug.
 	 *     @type callable $input_callback  Optional. `fn( array $params ): array|WP_Error`. Transforms the request
 	 *                                     params before dispatch — set `_fields`, pin `context`, inject fixed
-	 *                                     params, reshape — or return a `WP_Error` to reject. Must be pure; it can
-	 *                                     run more than once per call.
+	 *                                     params, reshape — or return a `WP_Error` to reject. Runs after the
+	 *                                     ability validates input against its schema, so to inject a *required*
+	 *                                     path capture (e.g. `id`) also pass an `input_schema` that does not mark
+	 *                                     it required, or validation rejects the call before this runs. Must be
+	 *                                     pure; it can run more than once per call.
 	 *     @type callable $output_callback Optional. `fn( $data, array $input, WP_REST_Response $response ): mixed|WP_Error`.
 	 *                                     Reshapes a successful response (runs last, over the body or the
 	 *                                     `{ items, total, total_pages }` envelope); not called on an error.

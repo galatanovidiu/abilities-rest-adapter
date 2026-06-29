@@ -59,6 +59,16 @@ use stdClass;
  *   `ability_invalid_permissions` and fires `_doing_it_wrong` (core's behaviour for
  *   any permission-phase error, not just denials). Read `check_permissions()` for the
  *   real reason, or advertise an `input_schema` that matches the route.
+ * - An `input_callback` runs after the ability validates input against its (derived
+ *   or supplied) schema, so it cannot supply a value the schema already requires:
+ *   `execute( array() )` against a route with a required path capture fails input
+ *   validation before the callback can inject the capture. To pin a fixed required
+ *   capture, also pass an `input_schema` that does not mark it required.
+ * - One `execute()` invokes the wrapped route's `permission_callback` twice — once
+ *   here (to surface the real denial via `check_permissions()`) and once inside
+ *   `rest_do_request()` at dispatch. A permission callback with side effects (rate
+ *   limiting, audit logging, cached state) must tolerate running more than once per
+ *   call, the same purity contract `input_callback` carries.
  * - Resolution matches the exact registered route pattern. For overlapping route
  *   patterns — where a substituted path could also match a different, earlier-
  *   registered route — the permission check and `rest_do_request()` resolve the
@@ -748,14 +758,15 @@ class WP_REST_Ability extends WP_Ability {
 	 * Runs the wrapped route's permission check on a fully-prepared request.
 	 *
 	 * Builds the request, then mirrors the pre-permission steps of REST dispatch
-	 * (set the handler attributes, apply defaults, validate, sanitize) so the
-	 * route's permission callback sees the same coerced params it would over
-	 * HTTP, and returns its real `true`/`false`/`WP_Error`.
+	 * (set the full handler attributes, apply defaults, validate, sanitize) so the
+	 * route's permission callback sees the same request it would over HTTP. Returns
+	 * `true` when the route allows the call — mirroring dispatch, which allows any
+	 * verdict that is not `false`/`null`/`WP_Error` — and a `WP_Error` otherwise.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @param mixed $input Optional. The ability input. Default `null`.
-	 * @return bool|\WP_Error The route's permission decision.
+	 * @return true|\WP_Error The route's permission decision.
 	 */
 	protected function run_permission_check( $input = null ) {
 		if ( null !== $this->resolve_error ) {
@@ -773,20 +784,24 @@ class WP_REST_Ability extends WP_Ability {
 			return $request;
 		}
 
-		$handler_args = isset( $this->rest_handler['args'] ) && is_array( $this->rest_handler['args'] ) ? $this->rest_handler['args'] : array();
-		if ( ! empty( $handler_args ) ) {
-			$request->set_attributes( array( 'args' => $handler_args ) );
-			$defaults = array();
-			foreach ( $handler_args as $arg_name => $arg_schema ) {
-				if ( ! isset( $arg_schema['default'] ) ) {
-					continue;
-				}
+		// Expose the FULL handler as request attributes, exactly as dispatch does
+		// (core's match_request_to_handler() calls `$request->set_attributes( $handler )`).
+		// Setting only `args` would let a permission callback that reads
+		// `$request->get_attributes()` diverge from HTTP — and since execute() gates on
+		// this check before rest_do_request() runs, a divergent denial blocks the call.
+		$request->set_attributes( $this->rest_handler );
 
-				$defaults[ $arg_name ] = $arg_schema['default'];
+		$handler_args = isset( $this->rest_handler['args'] ) && is_array( $this->rest_handler['args'] ) ? $this->rest_handler['args'] : array();
+		$defaults     = array();
+		foreach ( $handler_args as $arg_name => $arg_schema ) {
+			if ( ! isset( $arg_schema['default'] ) ) {
+				continue;
 			}
-			if ( ! empty( $defaults ) ) {
-				$request->set_default_params( $defaults );
-			}
+
+			$defaults[ $arg_name ] = $arg_schema['default'];
+		}
+		if ( ! empty( $defaults ) ) {
+			$request->set_default_params( $defaults );
 		}
 
 		$valid = $request->has_valid_params();
@@ -811,7 +826,17 @@ class WP_REST_Ability extends WP_Ability {
 			);
 		}
 
-		return $permission;
+		// A WP_Error is a faithful denial; pass it through. Otherwise dispatch would
+		// allow the call (it denies only on false/null/WP_Error), so normalize any
+		// truthy-but-not-`true` verdict (e.g. an integer 1 from a non-conforming
+		// callback) to literal true — the value WP_Ability::execute() requires, since
+		// it denies on `true !== $has_permissions`. Without this, such a call is
+		// allowed over HTTP but denied through execute().
+		if ( is_wp_error( $permission ) ) {
+			return $permission;
+		}
+
+		return true;
 	}
 
 	/**

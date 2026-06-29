@@ -104,6 +104,13 @@ parameters, or reshape the input. Return a `WP_Error` to reject the call.
 check and once for the dispatch — so do not let it depend on call order or cause
 side effects.
 
+> **Note:** the callback runs *after* the ability validates the input against its
+> schema. It can inject an **optional** parameter (e.g. `per_page`, `context`),
+> but it cannot supply a value the schema requires: a required path capture like
+> `id` must be present before the callback runs, or validation rejects the call.
+> To pin a fixed required capture, also pass an `input_schema` that does not mark
+> it required.
+
 ### `output_callback`
 
 ```php
@@ -202,6 +209,12 @@ know about how errors surface:
   `input_schema` is looser than the route, or an `input_callback` injects a value
   the route rejects) — surfaces **faithfully** through `check_permissions()` as the
   real `WP_Error`.
+
+> **Note:** one `execute()` runs the route's `permission_callback` **twice** — once
+> for the adapter's permission check (which surfaces the real denial) and once
+> inside `rest_do_request()` at dispatch. A permission callback with side effects
+> (rate limiting, audit logging, cached state) must tolerate running more than once
+> per call, just like `input_callback`.
 
 **The limitation:** `execute()` collapses *any* permission-phase error — a denial
 or an input error — into a generic `ability_invalid_permissions` error and fires
