@@ -12,7 +12,7 @@
  * @package AbilitiesRestAdapter
  */
 
-declare(strict_types=1);
+declare( strict_types = 1 );
 
 use GalatanOvidiu\AbilitiesRestAdapter\WP_REST_Ability;
 
