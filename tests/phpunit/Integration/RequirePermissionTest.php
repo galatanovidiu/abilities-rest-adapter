@@ -2,13 +2,13 @@
 /**
  * The opt-in `require_permission` floor.
  *
- * The adapter is faithful to the route's permission by default. `require_permission`
- * lets a developer add a coarse floor on top — a guard that can only DENY, never
- * grant. These tests lock the four guarantees: the guard tightens a route that would
- * otherwise allow; a passing guard cannot widen what the route denies; a guard's
- * `WP_Error` surfaces from `check_permissions()`; and the guard fires once per
- * `execute()` while the route's own callback fires twice. Plus the registration
- * guard: a non-callable value warns and is ignored.
+ * The guard is the only permission check the adapter runs in the ability's
+ * permission phase; the route's own check runs at dispatch. These tests lock the
+ * guarantees: the guard tightens a route that would otherwise allow; a passing
+ * guard cannot widen what the route denies (the route denial now surfaces through
+ * `execute()`); a guard's `WP_Error` surfaces from `check_permissions()`; and the
+ * guard fires once per `execute()` while the route's own callback fires once (at
+ * dispatch). Plus the registration guard: a non-callable value warns and is ignored.
  *
  * @package AbilitiesRestAdapter\Tests
  */
@@ -128,8 +128,9 @@ final class RequirePermissionTest extends AbilityTestCase {
 	}
 
 	/**
-	 * A passing guard hands off to the route, which can still deny — the guard
-	 * cannot widen access.
+	 * A passing guard defers to the route, which can still deny — the guard cannot
+	 * widen access. The route's denial now surfaces through execute(), not the
+	 * permission phase (which only sees the guard).
 	 */
 	public function test_guard_passes_then_route_decides(): void {
 		$ability = $this->register_ability(
@@ -145,13 +146,17 @@ final class RequirePermissionTest extends AbilityTestCase {
 
 		// Capable user: guard passes, route allows.
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'administrator' ) ) );
-		$this->assertTrue( $ability->check_permissions( array() ), 'guard true + route allows the capable user' );
+		$this->assertTrue( $ability->check_permissions( array() ), 'guard true → permission phase passes for the capable user' );
+		$this->assertSame( array(), $ability->execute( array() ), 'the route allows the capable user' );
 
-		// Incapable user: guard still passes, but the ROUTE denies.
+		// Incapable user: guard still passes (so the phase allows), but the ROUTE
+		// denies at dispatch, surfaced faithfully by execute().
 		wp_set_current_user( self::factory()->user->create( array( 'role' => 'subscriber' ) ) );
-		$perm = $ability->check_permissions( array() );
-		$this->assertTrue( is_wp_error( $perm ), 'a passing guard cannot grant what the route denies' );
-		$this->assertSame( 'rest_forbidden', $perm->get_error_code() );
+		$this->assertTrue( $ability->check_permissions( array() ), 'a passing guard cannot pre-empt the route; the phase still passes' );
+
+		$exec = $ability->execute( array() );
+		$this->assertTrue( is_wp_error( $exec ), 'the route denies the incapable user at dispatch' );
+		$this->assertSame( 'rest_forbidden', $exec->get_error_code() );
 	}
 
 	/**
@@ -180,10 +185,10 @@ final class RequirePermissionTest extends AbilityTestCase {
 	}
 
 	/**
-	 * The guard fires once per `execute()`; the route's own callback fires twice
-	 * (permission phase + dispatch).
+	 * The guard fires once per `execute()`; the route's own callback also fires once
+	 * (only at dispatch — the permission phase no longer pre-runs it).
 	 */
-	public function test_guard_runs_once_per_execute(): void {
+	public function test_guard_and_route_each_run_once_per_execute(): void {
 		wp_set_current_user( 0 );
 
 		$guard_calls = 0;
@@ -203,19 +208,20 @@ final class RequirePermissionTest extends AbilityTestCase {
 
 		$this->assertFalse( is_wp_error( $result ), 'the call is allowed' );
 		$this->assertSame( 1, $guard_calls, 'the guard fires once per execute()' );
-		$this->assertSame( 2, self::$route_permission_calls, 'the route permission callback fires twice (permission phase + dispatch)' );
+		$this->assertSame( 1, self::$route_permission_calls, 'the route permission callback fires once (only at dispatch)' );
 	}
 
 	/**
-	 * No `require_permission` → behavior is identical to today (pure delegation).
+	 * No `require_permission` → the permission phase passes and the route decides at
+	 * dispatch.
 	 */
-	public function test_absent_guard_is_unchanged(): void {
+	public function test_absent_guard_passes_and_route_decides(): void {
 		wp_set_current_user( 0 );
 
 		$ability = $this->register_ability( 'rp/none', array( 'route' => '/arat-test/v1/public-read', 'method' => 'GET' ) );
 
-		$this->assertTrue( $ability->check_permissions( array() ), 'no guard → route delegation, unchanged' );
-		$this->assertSame( array(), $ability->execute( array() ), 'dispatch is unchanged' );
+		$this->assertTrue( $ability->check_permissions( array() ), 'no guard → permission phase passes' );
+		$this->assertSame( array(), $ability->execute( array() ), 'the public route allows at dispatch' );
 	}
 
 	/**
@@ -235,6 +241,6 @@ final class RequirePermissionTest extends AbilityTestCase {
 		);
 
 		$this->assertNotNull( $ability, 'still registers' );
-		$this->assertTrue( $ability->check_permissions( array() ), 'a non-callable guard is ignored; route delegation stands' );
+		$this->assertTrue( $ability->check_permissions( array() ), 'a non-callable guard is ignored; the phase passes' );
 	}
 }

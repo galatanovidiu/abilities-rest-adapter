@@ -54,8 +54,8 @@ if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
 	 *                                     params, reshape — or return a `WP_Error` to reject. Runs after the
 	 *                                     ability validates input against its schema, so to inject a *required*
 	 *                                     path capture (e.g. `id`) also pass an `input_schema` that does not mark
-	 *                                     it required, or validation rejects the call before this runs. Must be
-	 *                                     pure; it can run more than once per call.
+	 *                                     it required, or validation rejects the call before this runs. Runs once
+	 *                                     per `execute()`, at dispatch.
 	 *     @type callable $output_callback Optional. `fn( $data, array $input, WP_REST_Response $response ): mixed|WP_Error`.
 	 *                                     Reshapes a successful response (runs last, over the body or the
 	 *                                     `{ items, total, total_pages }` envelope); not called on an error.
@@ -65,17 +65,20 @@ if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
 	 *                                     When an `output_callback` is set and this is omitted, no output schema
 	 *                                     is advertised and output validation is skipped.
 	 *     @type callable $require_permission Optional. `fn( mixed $input ): bool|WP_Error`. An additive permission
-	 *                                     floor, checked BEFORE the route's own permission and only in the
-	 *                                     permission phase (so it fires once per `execute()`, unlike the route
-	 *                                     check, which fires twice). It can only tighten access, never widen it: a
-	 *                                     truthy verdict falls through to the route's check, which stays the
-	 *                                     authority and can still deny. `false`/`null` is denied as `rest_forbidden`;
-	 *                                     a `WP_Error` surfaces from `check_permissions()` unchanged (bare
-	 *                                     `execute()` collapses any permission error to a generic one, exactly as it
-	 *                                     does for the route's own denial). `$input` is the RAW ability input, before
-	 *                                     any `input_callback` — best for a coarse floor (a capability, or "logged
-	 *                                     in"), not an object-level check on transformed data. Runs as the current
-	 *                                     user; a standalone `check_permissions()` does not pre-validate input.
+	 *                                     floor, enforced in the ability's permission phase — the ONLY permission
+	 *                                     check that runs there. The route's own permission check runs later, at
+	 *                                     dispatch (inside `rest_do_request()`), so the guard fires once per
+	 *                                     `execute()` and the route check fires once. The guard can only tighten
+	 *                                     access, never widen it: a truthy verdict defers to the route's own check,
+	 *                                     which stays the authority and can still deny at dispatch. `false`/`null` is
+	 *                                     denied as `rest_forbidden`; a `WP_Error` surfaces from `check_permissions()`
+	 *                                     unchanged. Bare `execute()` collapses the guard's denial — like any
+	 *                                     permission error — to a generic `ability_invalid_permissions`; the route's
+	 *                                     own denial, by contrast, surfaces through `execute()` as the real REST
+	 *                                     error. `$input` is the RAW ability input, before any `input_callback` —
+	 *                                     best for a coarse floor (a capability, or "logged in"), not an object-level
+	 *                                     check on transformed data. Runs as the current user; a standalone
+	 *                                     `check_permissions()` does not pre-validate input.
 	 *     @type array    $meta            Optional. Ability meta, including `annotations`; required for write methods.
 	 * }
 	 * @return \WP_Ability|null The registered ability, or `null` on failure.
