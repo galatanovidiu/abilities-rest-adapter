@@ -997,12 +997,56 @@ class WP_REST_Ability extends WP_Ability {
 	}
 
 	/**
+	 * Scans a `(?P<name>…)` capture group's body to just past its closing `)`.
+	 *
+	 * A balanced-parenthesis scan, not a naive `[^)]+` regex: real route patterns
+	 * nest groups and character classes (e.g. the FSE template id, whose capture
+	 * body holds a `(?:…)` group), so the first `)` is not the group's end. The
+	 * scan honors backslash escapes and skips `[...]` character classes (where `)`
+	 * is a literal). Both capture scanners — {@see substitute_captures()} and
+	 * {@see capture_specs()} — share it.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $route            The registered route regex.
+	 * @param int    $subpattern_start Offset of the first character inside the capture group.
+	 * @param int    $length           The route length (`strlen( $route )`).
+	 * @return array{0: int, 1: int} The `[end_offset, depth]`: the offset just past the group's
+	 *                               closing `)`, and the residual nesting depth (0 = closed cleanly).
+	 */
+	protected function find_capture_end( string $route, int $subpattern_start, int $length ): array {
+		$depth = 1;
+		$pos   = $subpattern_start;
+		while ( $pos < $length && $depth > 0 ) {
+			$char = $route[ $pos ];
+			if ( '\\' === $char ) {
+				$pos += 2;
+				continue;
+			}
+			if ( '[' === $char ) {
+				++$pos;
+				while ( $pos < $length && ']' !== $route[ $pos ] ) {
+					if ( '\\' === $route[ $pos ] ) {
+						++$pos;
+					}
+					++$pos;
+				}
+			} elseif ( '(' === $char ) {
+				++$depth;
+			} elseif ( ')' === $char ) {
+				--$depth;
+			}
+			++$pos;
+		}
+
+		return array( $pos, $depth );
+	}
+
+	/**
 	 * Substitutes `(?P<name>…)` path captures with encoded input values.
 	 *
-	 * Uses a balanced-parenthesis scan rather than a naive `[^)]+` regex, because
-	 * real route patterns nest groups and character classes (e.g. the FSE
-	 * template id). A missing required capture is reported as a 400 input error,
-	 * not a permission error.
+	 * Scans each capture body with {@see find_capture_end()}. A missing required
+	 * capture is reported as a 400 input error, not a permission error.
 	 *
 	 * @since 0.1.0
 	 *
@@ -1026,32 +1070,8 @@ class WP_REST_Ability extends WP_Ability {
 
 			$result .= substr( $route, $offset, $group_start - $offset );
 
-			$depth = 1;
-			$pos   = $subpattern_start;
-			while ( $pos < $length && $depth > 0 ) {
-				$char = $route[ $pos ];
-				if ( '\\' === $char ) {
-					$pos += 2;
-					continue;
-				}
-				if ( '[' === $char ) {
-					++$pos;
-					while ( $pos < $length && ']' !== $route[ $pos ] ) {
-						if ( '\\' === $route[ $pos ] ) {
-							++$pos;
-						}
-						++$pos;
-					}
-				} elseif ( '(' === $char ) {
-					++$depth;
-				} elseif ( ')' === $char ) {
-					--$depth;
-				}
-				++$pos;
-			}
-
-			$group_end  = $pos;
-			$subpattern = substr( $route, $subpattern_start, $group_end - 1 - $subpattern_start );
+			[ $group_end, $depth ] = $this->find_capture_end( $route, $subpattern_start, $length );
+			$subpattern            = substr( $route, $subpattern_start, $group_end - 1 - $subpattern_start );
 
 			if ( 0 === $depth && array_key_exists( $name, $input ) && is_scalar( $input[ $name ] ) ) {
 				$encoded           = $this->encode_capture( (string) $input[ $name ], $subpattern );
@@ -1140,32 +1160,9 @@ class WP_REST_Ability extends WP_Ability {
 			$group_start      = (int) $matches[0][1];
 			$subpattern_start = $group_start + strlen( $matches[0][0] );
 
-			$depth = 1;
-			$pos   = $subpattern_start;
-			while ( $pos < $length && $depth > 0 ) {
-				$char = $route[ $pos ];
-				if ( '\\' === $char ) {
-					$pos += 2;
-					continue;
-				}
-				if ( '[' === $char ) {
-					++$pos;
-					while ( $pos < $length && ']' !== $route[ $pos ] ) {
-						if ( '\\' === $route[ $pos ] ) {
-							++$pos;
-						}
-						++$pos;
-					}
-				} elseif ( '(' === $char ) {
-					++$depth;
-				} elseif ( ')' === $char ) {
-					--$depth;
-				}
-				++$pos;
-			}
-
-			$specs[ $name ] = substr( $route, $subpattern_start, $pos - 1 - $subpattern_start );
-			$offset         = $pos;
+			[ $group_end ]  = $this->find_capture_end( $route, $subpattern_start, $length );
+			$specs[ $name ] = substr( $route, $subpattern_start, $group_end - 1 - $subpattern_start );
+			$offset         = $group_end;
 		}
 
 		return $specs;
