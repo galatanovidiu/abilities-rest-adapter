@@ -150,9 +150,11 @@ the derived schema is wrong for your ability — for example, when an
 
 ## Collections
 
-A GET route that returns a list is detected as a collection — either its handler
-callback is a controller's `get_items`, or it exposes a `per_page`/`page`
-argument. A collection's result is wrapped:
+A GET route that returns a list is detected as a collection when its handler
+callback is a controller's `get_items` method — the reliable signal that the route
+returns a list. A closure-based list route that is not a `get_items` controller is
+treated as a single item; shape it as a collection with `output_schema` /
+`output_callback`. A collection's result is wrapped:
 
 ```json
 { "items": [ /* the route body */ ], "total": 42, "total_pages": 5 }
