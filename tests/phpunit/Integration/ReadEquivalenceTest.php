@@ -2,9 +2,9 @@
 /**
  * Behavioral equivalence of read abilities vs `rest_do_request()`.
  *
- * Ports the read sections of `spikes/phase2-verify.php` plus review fixes #1
- * (collection without `per_page`) and #5 (empty nested `properties` serialize
- * as `{}`). Each assertion mirrors one `check()`/`fcheck()` line.
+ * Verifies that read abilities return the same body as `rest_do_request()`: a
+ * singleton GET, a collection envelope, a path-capture route, a collection
+ * without `per_page`, and that empty nested `properties` serialize as `{}`.
  *
  * @package AbilitiesRestAdapter\Tests
  */
@@ -106,7 +106,7 @@ final class ReadEquivalenceTest extends AbilityTestCase {
 	}
 
 	/**
-	 * Review #1: GET /wp/v2/themes is a collection even though it has no `per_page`.
+	 * GET /wp/v2/themes is a collection even though it has no `per_page`.
 	 */
 	public function test_themes_collection_without_per_page(): void {
 		$themes   = $this->register_ability( 'probe/themes', array( 'route' => '/wp/v2/themes', 'method' => 'GET' ) );
@@ -124,7 +124,7 @@ final class ReadEquivalenceTest extends AbilityTestCase {
 	}
 
 	/**
-	 * Review #5: nested empty `properties` serialize as `{}`, never `[]`.
+	 * Nested empty `properties` serialize as `{}`, never `[]`.
 	 */
 	public function test_block_types_schema_has_no_empty_array_properties(): void {
 		$block_types = $this->register_ability( 'probe/block-types', array( 'route' => '/wp/v2/block-types', 'method' => 'GET' ) );

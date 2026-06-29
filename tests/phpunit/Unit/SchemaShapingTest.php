@@ -90,7 +90,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 					'args'     => array( 'per_page' => array(), 'page' => array() ),
 				)
 			),
-			'pagination args no longer force the collection envelope'
+			'pagination args alone do not force the collection envelope'
 		);
 	}
 
