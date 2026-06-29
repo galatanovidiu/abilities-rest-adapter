@@ -93,4 +93,15 @@ final class DescribeRouteTest extends WP_UnitTestCase {
 		$this->assertIsString( $info['error'] );
 		$this->assertNotEmpty( $info['error'], 'a not-found message is surfaced' );
 	}
+
+	/**
+	 * A method with surrounding whitespace is trimmed, so it still resolves.
+	 */
+	public function test_method_is_trimmed(): void {
+		$info = WP_REST_Ability::describe( '/wp/v2/users/me', ' get ' );
+
+		$this->assertTrue( $info['found'], 'a padded method still resolves' );
+		$this->assertSame( 'GET', $info['method'], 'the method is trimmed and uppercased' );
+		$this->assertTrue( $info['readonly'], 'a padded GET is still read-only' );
+	}
 }

@@ -106,4 +106,17 @@ final class SafetyAnnotationsTest extends AbilityTestCase {
 
 		$this->assertTrue( $read->get_meta_item( 'annotations' )['readonly'], 'a GET defaults to readonly:true' );
 	}
+
+	/**
+	 * A padded method like ' GET ' is trimmed, so the GET is read-only and emits no
+	 * spurious write warning.
+	 */
+	public function test_padded_method_is_trimmed_to_a_read(): void {
+		$read = $this->register_ability(
+			'probe/padded-get',
+			array( 'route' => '/wp/v2/posts', 'method' => ' GET ' )
+		);
+
+		$this->assertTrue( $read->get_meta_item( 'annotations' )['readonly'], 'a padded GET is read-only' );
+	}
 }

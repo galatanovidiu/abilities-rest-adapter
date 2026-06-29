@@ -171,7 +171,7 @@ class WP_REST_Ability extends WP_Ability {
 	 */
 	public static function build_args( string $name, array $args ): array {
 		$route   = isset( $args['route'] ) && is_string( $args['route'] ) ? $args['route'] : '';
-		$method  = isset( $args['method'] ) && is_string( $args['method'] ) ? strtoupper( $args['method'] ) : 'GET';
+		$method  = isset( $args['method'] ) && is_string( $args['method'] ) ? strtoupper( trim( $args['method'] ) ) : 'GET';
 		$is_read = ( 'GET' === $method );
 
 		$annotations = array();
@@ -297,7 +297,7 @@ class WP_REST_Ability extends WP_Ability {
 	 * } The route snapshot.
 	 */
 	public static function describe( string $route, string $method ): array {
-		$http_method = strtoupper( $method );
+		$http_method = strtoupper( trim( $method ) );
 
 		// A throwaway instance: placeholder label/description/category satisfy core's
 		// constructor (a subclass needs no execute/permission callback), and the
