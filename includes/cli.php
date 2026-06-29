@@ -46,8 +46,11 @@ WP_CLI::add_command(
 		}
 
 		if ( ! $info['found'] ) {
+			// WP_CLI::error() normally exits, so this return is unreachable at runtime;
+			// it defends against a stubbed error() (as test runners use) that does not
+			// exit, stopping fall-through into the success output.
 			WP_CLI::error( (string) $info['error'] );
-			return; // Unreachable (WP_CLI::error exits); keeps the type-checker happy.
+			return;
 		}
 
 		$type = $info['is_collection']
