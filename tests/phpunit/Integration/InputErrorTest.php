@@ -1,11 +1,12 @@
 <?php
 /**
- * Input/route errors surface as input errors, not permission errors (G11, #9, #14).
+ * Input/route errors surface faithfully through execute(), not as permission errors.
  *
- * Ports the missing-param check from `spikes/phase2-verify.php` and review fixes
- * #9 (a non-scalar path capture is a 400 input error, no PHP warning) and #14 (a
- * not-found route surfaces the real error and does not mask it with an open
- * input schema).
+ * The route's permission check and request building run at dispatch, so a missing or
+ * malformed path capture, or a not-found route, surfaces as the real `WP_Error`
+ * through `execute()` — not collapsed to a generic permission error. Cases that need
+ * a non-scalar or pattern-misfitting value to reach capture substitution use a loose
+ * `input_schema` so the value passes the ability's own validation first.
  *
  * @package AbilitiesRestAdapter\Tests
  */
@@ -29,7 +30,7 @@ final class InputErrorTest extends AbilityTestCase {
 	}
 
 	/**
-	 * G11: a missing required capture is an input error, never a permission error.
+	 * A missing required capture is an input error, never a permission error.
 	 */
 	public function test_missing_path_param_is_an_input_error(): void {
 		$post  = $this->register_ability( 'probe/post-missing', array( 'route' => self::POST_ROUTE, 'method' => 'GET' ) );
@@ -44,46 +45,70 @@ final class InputErrorTest extends AbilityTestCase {
 	}
 
 	/**
-	 * Review #9: a non-scalar capture is a 400 route-param error with no warning.
+	 * A non-scalar capture is a 400 route-param error with no PHP warning.
 	 *
-	 * Uses check_permissions() to bypass input validation and reach the capture
-	 * substitution directly (the path the array value would otherwise crash).
+	 * A loose `input_schema` lets the array value pass the ability's own validation so
+	 * it reaches capture substitution at dispatch (the path the array would crash).
 	 */
 	public function test_non_scalar_path_param_is_invalid_route_param(): void {
-		$post = $this->register_ability( 'probe/post-nonscalar', array( 'route' => self::POST_ROUTE, 'method' => 'GET' ) );
-		$perm = $post->check_permissions( array( 'id' => array( 1, 2 ) ) );
+		$post = $this->register_ability(
+			'probe/post-nonscalar',
+			array(
+				'route'        => self::POST_ROUTE,
+				'method'       => 'GET',
+				'input_schema' => array(
+					'type'                 => 'object',
+					'properties'           => array(),
+					'additionalProperties' => true,
+				),
+			)
+		);
 
-		$this->assertTrue( is_wp_error( $perm ) );
-		$this->assertSame( 'rest_ability_invalid_route_param', $perm->get_error_code() );
-		$this->assertSame( 400, (int) $perm->get_error_data()['status'] );
+		$error = $post->execute( array( 'id' => array( 1, 2 ) ) );
+
+		$this->assertTrue( is_wp_error( $error ) );
+		$this->assertSame( 'rest_ability_invalid_route_param', $error->get_error_code() );
+		$this->assertSame( 400, (int) $error->get_error_data()['status'] );
 	}
 
 	/**
 	 * A scalar capture that does not fit the route pattern is a route-not-found
 	 * verdict, not an authz verdict — over HTTP the path would 404 before the
-	 * permission callback runs, so the standalone check must say so faithfully.
+	 * permission callback runs, so execute() surfaces that faithfully.
 	 *
-	 * Uses check_permissions() (which bypasses input validation) to drive a value
-	 * the numeric capture forbids straight into capture substitution.
+	 * A loose `input_schema` (id as a string) lets the misfitting value reach capture
+	 * substitution, where the numeric pattern rejects it.
 	 */
 	public function test_scalar_capture_that_misfits_the_pattern_is_route_not_found(): void {
-		$post = $this->register_ability( 'probe/post-misfit', array( 'route' => self::POST_ROUTE, 'method' => 'GET' ) );
-		$perm = $post->check_permissions( array( 'id' => '12/3' ) );
+		$post = $this->register_ability(
+			'probe/post-misfit',
+			array(
+				'route'        => self::POST_ROUTE,
+				'method'       => 'GET',
+				'input_schema' => array(
+					'type'                 => 'object',
+					'properties'           => array( 'id' => array( 'type' => 'string' ) ),
+					'additionalProperties' => true,
+				),
+			)
+		);
 
-		$this->assertTrue( is_wp_error( $perm ) );
-		$this->assertSame( 'rest_no_route', $perm->get_error_code(), 'a misfitting capture would not route over HTTP' );
-		$this->assertSame( 404, (int) $perm->get_error_data()['status'] );
+		$error = $post->execute( array( 'id' => '12/3' ) );
+
+		$this->assertTrue( is_wp_error( $error ) );
+		$this->assertSame( 'rest_no_route', $error->get_error_code(), 'a misfitting capture would not route over HTTP' );
+		$this->assertSame( 404, (int) $error->get_error_data()['status'] );
 	}
 
 	/**
-	 * Review #14: a not-found route surfaces the real error and keeps input open.
+	 * A not-found route surfaces the real error through execute() and keeps input open.
 	 */
 	public function test_not_found_route_surfaces_real_error(): void {
 		$missing = $this->register_ability( 'probe/missing', array( 'route' => '/wp/v2/this-route-does-not-exist', 'method' => 'GET' ) );
 
-		$perm = $missing->check_permissions( array() );
-		$this->assertTrue( is_wp_error( $perm ) );
-		$this->assertSame( 'rest_ability_route_not_found', $perm->get_error_code() );
+		$error = $missing->execute( array() );
+		$this->assertTrue( is_wp_error( $error ) );
+		$this->assertSame( 'rest_ability_route_not_found', $error->get_error_code() );
 
 		$input = $missing->get_input_schema();
 		$this->assertTrue( $input['additionalProperties'], 'not-found input schema stays open, does not mask the error' );

@@ -67,18 +67,19 @@ final class InputCallbackTest extends AbilityTestCase {
 	}
 
 	/**
-	 * The callback may reject the call by returning a WP_Error (seen via check_permissions).
+	 * The callback may reject the call by returning a WP_Error, which surfaces
+	 * faithfully through execute() (the callback runs at dispatch).
 	 */
 	public function test_input_callback_can_reject(): void {
 		$callback = static function ( array $params ) {
 			return new \WP_Error( 'in_rejected', 'Rejected by input callback.', array( 'status' => 400 ) );
 		};
 
-		$post = $this->register_ability( 'in/reject', array( 'route' => '/wp/v2/posts/(?P<id>[\d]+)', 'method' => 'GET', 'input_callback' => $callback ) );
-		$perm = $post->check_permissions( array( 'id' => $this->post_id ) );
+		$post   = $this->register_ability( 'in/reject', array( 'route' => '/wp/v2/posts/(?P<id>[\d]+)', 'method' => 'GET', 'input_callback' => $callback ) );
+		$result = $post->execute( array( 'id' => $this->post_id ) );
 
-		$this->assertTrue( is_wp_error( $perm ) );
-		$this->assertSame( 'in_rejected', $perm->get_error_code() );
+		$this->assertTrue( is_wp_error( $result ) );
+		$this->assertSame( 'in_rejected', $result->get_error_code() );
 	}
 
 	/**
@@ -174,8 +175,8 @@ final class InputCallbackTest extends AbilityTestCase {
 	 * An input_schema override that omits a path capture still fails closed.
 	 *
 	 * The override drops the capture-required backstop, so validation passes, but
-	 * capture substitution still rejects a missing id. The faithful error is visible
-	 * via check_permissions() (execute() would collapse it to a permission error).
+	 * capture substitution still rejects a missing id at dispatch. The faithful error
+	 * surfaces through execute().
 	 */
 	public function test_input_schema_override_omitting_capture_fails_closed(): void {
 		$override = array(
@@ -193,8 +194,8 @@ final class InputCallbackTest extends AbilityTestCase {
 			)
 		);
 
-		$perm = $post->check_permissions( array() );
-		$this->assertTrue( is_wp_error( $perm ) );
-		$this->assertSame( 'rest_ability_missing_route_param', $perm->get_error_code() );
+		$result = $post->execute( array() );
+		$this->assertTrue( is_wp_error( $result ) );
+		$this->assertSame( 'rest_ability_missing_route_param', $result->get_error_code() );
 	}
 }

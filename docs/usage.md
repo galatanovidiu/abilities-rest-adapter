@@ -17,7 +17,7 @@ limitation, and the `wp ability describe-route` command.
 - [The five seams](#the-five-seams)
 - [Collections](#collections)
 - [Writes and safety annotations](#writes-and-safety-annotations)
-- [Permission errors: a known limitation](#permission-errors-a-known-limitation)
+- [How permission errors surface](#how-permission-errors-surface)
 - [Inspecting a route: `wp ability describe-route`](#inspecting-a-route-wp-ability-describe-route)
 
 ## Registering an ability
@@ -179,15 +179,16 @@ deny — the two are an AND-gate.
 coarse floor — a capability, or "must be logged in" — not an object-level check on
 transformed data.
 
-> **Note:** unlike the route's `permission_callback` (which fires twice per
-> `execute()`), the guard runs **once**, in the permission phase only. It runs as
-> the current user, and a standalone `check_permissions()` does not pre-validate
-> input, so keep the guard robust.
+> **Note:** the guard runs **once**, in the permission phase — the only permission
+> check that runs there. The route's own `permission_callback` runs once later, at
+> dispatch. The guard runs as the current user, and a standalone
+> `check_permissions()` does not pre-validate input, so keep the guard robust.
 
 > **Note:** a `WP_Error` from the guard surfaces unchanged through
-> `check_permissions()`. Bare `execute()` collapses it to the generic
-> `ability_invalid_permissions`, exactly as it does for the route's own denial —
-> see [Permission errors](#permission-errors-a-known-limitation).
+> `check_permissions()`. Bare `execute()` collapses the guard's denial to the generic
+> `ability_invalid_permissions` (the one case where the reason is hidden). The route's
+> own denial, by contrast, surfaces through `execute()` as the real REST error — see
+> [How permission errors surface](#how-permission-errors-surface).
 
 ## Collections
 
@@ -238,45 +239,46 @@ but the adapter triggers `_doing_it_wrong` and leaves the annotations unset
 (`null`). Unset means "unknown" — a consumer treats an unknown annotation as
 unsafe (ask first), never as a false "safe".
 
-## Permission errors: a known limitation
+## How permission errors surface
 
-The adapter delegates the permission decision to the route's own
-`permission_callback`, run on validated and sanitized parameters. (To require
-*more* than the route does, add a [`require_permission`](#require_permission)
-floor — it can tighten, never widen.) Two things to know about how errors surface:
+Permission is checked in two places, at two times:
 
-- **A denial** (the route returns `false`/`null`) becomes a `rest_forbidden` error
-  with a 403 (logged in) or 401 (logged out) status — the same actionable error
-  the endpoint returns over HTTP, not a bare `false`.
-- **An input error caught during the permission phase** — a missing or invalid
-  path capture, or a parameter the route rejects (which happens when a supplied
-  `input_schema` is looser than the route, or an `input_callback` injects a value
-  the route rejects) — surfaces **faithfully** through `check_permissions()` as the
-  real `WP_Error`.
+1. **The ability's permission phase** runs only your optional
+   [`require_permission`](#require_permission) guard. With no guard it always passes.
+2. **The route's own `permission_callback`** runs at dispatch, inside
+   `rest_do_request()`, when you call `execute()` — exactly as it would over HTTP.
 
-> **Note:** the permission check runs only the route's own `permission_callback`,
-> not request-level filters such as `rest_request_before_callbacks`. So a
-> `check_permissions()` of `true` means the route would allow the call, not that
-> dispatch is guaranteed to succeed.
+This split is what makes errors useful. `WP_Ability::execute()` collapses *any*
+non-`true` permission-phase result into a generic `ability_invalid_permissions` error
+and fires `_doing_it_wrong`. Because the adapter keeps the permission phase to the
+guard alone, the route's real decision flows through dispatch untouched, and
+`execute()` returns the **real** REST error the caller can recover from:
 
-> **Note:** one `execute()` runs the route's `permission_callback` **twice** — once
-> for the adapter's permission check (which surfaces the real denial) and once
-> inside `rest_do_request()` at dispatch. A permission callback with side effects
-> (rate limiting, audit logging, cached state) must tolerate running more than once
-> per call, just like `input_callback`.
+- **A route denial** → `rest_forbidden` (403/401), or a controller's own
+  `rest_cannot_*` error.
+- **A missing object** → `rest_post_invalid_id` and friends (404).
+- **A parameter the route rejects** → `rest_invalid_param` (400) — e.g. when a
+  supplied `input_schema` is looser than the route, or an `input_callback` injects a
+  value the route rejects.
+- **A missing or non-fitting path capture** → `ability_invalid_input` (caught by the
+  ability's own schema validation), or, with a loose `input_schema`,
+  `rest_ability_missing_route_param` / `rest_no_route` from dispatch.
 
-**The limitation:** `execute()` collapses *any* permission-phase error — a denial
-or an input error — into a generic `ability_invalid_permissions` error and fires
-`_doing_it_wrong`. This is core's behavior for the `WP_Ability::execute()` path,
-not something the adapter can change.
+An MCP/agent consumer gets an actionable code and status to recover from, instead of
+one opaque error.
 
-To get the real reason:
+**The one thing still collapsed:** a `require_permission` **guard** denial. The guard
+is the adapter's own floor, run only in the permission phase, so its denial is a
+genuine "not allowed" — `execute()` returns the generic `ability_invalid_permissions`,
+hiding the reason, which is the legitimate case for an authorization denial. The
+guard's real `WP_Error` still surfaces through a standalone `check_permissions()` and
+the `wp_ability_permission_result` filter (WordPress 7.1+).
 
-- Read `check_permissions( $input )` directly — it carries the real `WP_Error`.
-- Or hook the `wp_ability_permission_result` filter (WordPress 7.1+), which sees
-  the real result.
-- Or advertise an `input_schema` that matches the route, so an input error
-  surfaces as an input-validation error before the permission phase.
+> **Note:** because the route's permission check now runs only at dispatch, a
+> standalone `check_permissions()` reflects the guard alone — it no longer pre-runs the
+> route's check, so an ability may report "allowed" yet still be denied by the route at
+> `execute()` time. A callback with side effects (rate limiting, audit logging) runs
+> once per `execute()`, not twice.
 
 ## Inspecting a route: `wp ability describe-route`
 
