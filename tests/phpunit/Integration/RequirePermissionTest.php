@@ -5,7 +5,7 @@
  * The guard is the only permission check the adapter runs in the ability's
  * permission phase; the route's own check runs at dispatch. These tests lock the
  * guarantees: the guard tightens a route that would otherwise allow; a passing
- * guard cannot widen what the route denies (the route denial now surfaces through
+ * guard cannot widen what the route denies (the route denial surfaces through
  * `execute()`); a guard's `WP_Error` surfaces from `check_permissions()`; and the
  * guard fires once per `execute()` while the route's own callback fires once (at
  * dispatch). Plus the registration guard: a non-callable value warns and is ignored.
@@ -129,7 +129,7 @@ final class RequirePermissionTest extends AbilityTestCase {
 
 	/**
 	 * A passing guard defers to the route, which can still deny — the guard cannot
-	 * widen access. The route's denial now surfaces through execute(), not the
+	 * widen access. The route's denial surfaces through execute(), not the
 	 * permission phase (which only sees the guard).
 	 */
 	public function test_guard_passes_then_route_decides(): void {
@@ -186,7 +186,7 @@ final class RequirePermissionTest extends AbilityTestCase {
 
 	/**
 	 * The guard fires once per `execute()`; the route's own callback also fires once
-	 * (only at dispatch — the permission phase no longer pre-runs it).
+	 * (only at dispatch — the permission phase does not pre-run it).
 	 */
 	public function test_guard_and_route_each_run_once_per_execute(): void {
 		wp_set_current_user( 0 );

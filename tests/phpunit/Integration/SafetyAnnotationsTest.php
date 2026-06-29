@@ -60,7 +60,7 @@ final class SafetyAnnotationsTest extends AbilityTestCase {
 	}
 
 	/**
-	 * Review #2: a developer `readonly:true` on a write is overridden to false.
+	 * A developer `readonly:true` on a write is overridden to false.
 	 */
 	public function test_developer_readonly_override_on_write_is_forced_false(): void {
 		$lie = $this->register_ability(

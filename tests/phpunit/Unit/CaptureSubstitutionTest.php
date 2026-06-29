@@ -2,7 +2,7 @@
 /**
  * Path-capture substitution and per-capture encoding (G3).
  *
- * Ports `spikes/phase2-g3.php`: a permissive capture round-trips raw, a numeric
+ * Covers four capture cases: a permissive capture round-trips raw, a numeric
  * capture is a no-op, a traversal attempt is encoded (fail closed), and the
  * balanced-paren scan survives nested groups. Reaches the protected engine
  * methods via reflection on a bare instance (the subclass skips the

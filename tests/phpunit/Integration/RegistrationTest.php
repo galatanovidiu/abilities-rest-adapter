@@ -2,7 +2,7 @@
 /**
  * Registration-time validation: category enforcement and malformed args.
  *
- * Covers the removed default category (an unregistered category must fail) and
+ * Covers category enforcement (an unregistered category must fail) and
  * the non-array schema-arg guard.
  *
  * @package AbilitiesRestAdapter\Tests
@@ -29,8 +29,8 @@ final class RegistrationTest extends AbilityTestCase {
 	 */
 	public function test_unregistered_category_fails_registration(): void {
 		$this->setExpectedIncorrectUsage( 'WP_Abilities_Registry::register' );
-		// The base helper's wp_get_ability() lookup of the now-unregistered ability
-		// also trips core's "not found" notice.
+		// The base helper's wp_get_ability() lookup of the ability that failed to
+		// register also trips core's "not found" notice.
 		$this->setExpectedIncorrectUsage( 'WP_Abilities_Registry::get_registered' );
 
 		$ability = $this->register_ability(

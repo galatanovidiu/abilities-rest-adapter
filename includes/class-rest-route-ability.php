@@ -1059,7 +1059,7 @@ class Rest_Route_Ability extends WP_Ability {
 		// The developer's input callback transforms the params before the request is
 		// built — set `_fields`, pin `context`, inject fixed params, reshape, or return
 		// a WP_Error to reject. It runs once per execute(), at dispatch (the permission
-		// phase no longer builds a request).
+		// phase is guard-only and builds no request).
 		$input_callback = $this->rest_args['input_callback'] ?? null;
 		if ( is_callable( $input_callback ) ) {
 			$transformed = $input_callback( $input );

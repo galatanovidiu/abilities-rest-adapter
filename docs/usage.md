@@ -274,11 +274,11 @@ hiding the reason, which is the legitimate case for an authorization denial. The
 guard's real `WP_Error` still surfaces through a standalone `check_permissions()` and
 the `wp_ability_permission_result` filter (WordPress 7.1+).
 
-> **Note:** because the route's permission check now runs only at dispatch, a
-> standalone `check_permissions()` reflects the guard alone — it no longer pre-runs the
+> **Note:** because the route's permission check runs only at dispatch, a
+> standalone `check_permissions()` reflects the guard alone — it does not pre-run the
 > route's check, so an ability may report "allowed" yet still be denied by the route at
 > `execute()` time. A callback with side effects (rate limiting, audit logging) runs
-> once per `execute()`, not twice.
+> once per `execute()`.
 
 ## Inspecting a route: `wp ability describe-route`
 

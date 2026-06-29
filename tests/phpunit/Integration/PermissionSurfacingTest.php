@@ -140,7 +140,7 @@ final class PermissionSurfacingTest extends AbilityTestCase {
 	 * A truthy-but-not-`true` permission verdict is allowed through execute().
 	 *
 	 * Dispatch allows any verdict that is not false/null/WP_Error, and the adapter
-	 * no longer pre-runs the route callback, so dispatch decides natively.
+	 * does not pre-run the route callback (it is guard-only), so dispatch decides natively.
 	 */
 	public function test_truthy_route_permission_is_allowed(): void {
 		$ability = $this->register_ability( 'probe/truthy', array( 'route' => '/arat-test/v1/truthy', 'method' => 'GET' ) );
