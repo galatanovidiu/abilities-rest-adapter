@@ -47,7 +47,7 @@ use stdClass;
  *
  * @since 0.1.0
  */
-class WP_REST_Ability extends WP_Ability {
+class Rest_Route_Ability extends WP_Ability {
 
 	/**
 	 * The REST route pattern this ability wraps (e.g. `/wp/v2/posts/(?P<id>[\d]+)`).

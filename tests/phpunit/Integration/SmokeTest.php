@@ -10,7 +10,7 @@ declare(strict_types=1);
 namespace GalatanOvidiu\AbilitiesRestAdapter\Tests\Integration;
 
 use WP_UnitTestCase;
-use GalatanOvidiu\AbilitiesRestAdapter\WP_REST_Ability;
+use GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability;
 
 /**
  * @coversNothing
@@ -19,7 +19,7 @@ final class SmokeTest extends WP_UnitTestCase {
 
 	public function test_plugin_public_api_is_loaded(): void {
 		$this->assertTrue( function_exists( 'wp_register_ability_from_rest_route' ), 'public registrar function is defined' );
-		$this->assertTrue( class_exists( WP_REST_Ability::class ), 'engine class is autoloaded' );
+		$this->assertTrue( class_exists( Rest_Route_Ability::class ), 'engine class is autoloaded' );
 	}
 
 	public function test_abilities_api_is_available(): void {

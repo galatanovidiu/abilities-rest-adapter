@@ -14,26 +14,26 @@ declare(strict_types=1);
 
 namespace GalatanOvidiu\AbilitiesRestAdapter\Tests\Unit;
 
-use GalatanOvidiu\AbilitiesRestAdapter\WP_REST_Ability;
+use GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability;
 use ReflectionMethod;
 use stdClass;
 use WP_UnitTestCase;
 
 /**
- * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\WP_REST_Ability
+ * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability
  */
 final class SchemaShapingTest extends WP_UnitTestCase {
 
 	/**
 	 * The engine instance reflection invokes against.
 	 *
-	 * @var WP_REST_Ability
+	 * @var Rest_Route_Ability
 	 */
 	private $ability;
 
 	public function set_up(): void {
 		parent::set_up();
-		$this->ability = new WP_REST_Ability(
+		$this->ability = new Rest_Route_Ability(
 			'probe/schema',
 			array(
 				'label'       => 'Schema',
@@ -51,7 +51,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 * @return array<string, mixed>
 	 */
 	private function clean( $node, bool $strip_readonly ): array {
-		$method = new ReflectionMethod( WP_REST_Ability::class, 'clean_schema_node' );
+		$method = new ReflectionMethod( Rest_Route_Ability::class, 'clean_schema_node' );
 		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $node, $strip_readonly );
 	}
@@ -62,7 +62,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 * @param mixed $value The value to test.
 	 */
 	private function is_list( $value ): bool {
-		$method = new ReflectionMethod( WP_REST_Ability::class, 'is_list' );
+		$method = new ReflectionMethod( Rest_Route_Ability::class, 'is_list' );
 		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $value );
 	}
@@ -73,7 +73,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 * @param array<string, mixed> $handler The route handler.
 	 */
 	private function detect_collection( array $handler ): bool {
-		$method = new ReflectionMethod( WP_REST_Ability::class, 'detect_collection' );
+		$method = new ReflectionMethod( Rest_Route_Ability::class, 'detect_collection' );
 		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $handler );
 	}

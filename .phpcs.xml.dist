@@ -50,7 +50,6 @@
 		<exclude name="Generic.Commenting.DocComment.MissingShort" />
 		<!-- Allow modern PHP syntax -->
 		<exclude name="Universal.Operators.DisallowShortTernary" />
-		<exclude name="WordPress.Files.FileName" />
 		<exclude name="WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedNamespaceFound" />
 		<exclude name="WordPress.NamingConventions.PrefixAllGlobals.ShortPrefixPassed" />
 		<!--

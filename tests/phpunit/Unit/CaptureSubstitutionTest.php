@@ -15,12 +15,12 @@ declare(strict_types=1);
 
 namespace GalatanOvidiu\AbilitiesRestAdapter\Tests\Unit;
 
-use GalatanOvidiu\AbilitiesRestAdapter\WP_REST_Ability;
+use GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability;
 use ReflectionMethod;
 use WP_UnitTestCase;
 
 /**
- * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\WP_REST_Ability
+ * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability
  */
 final class CaptureSubstitutionTest extends WP_UnitTestCase {
 
@@ -33,13 +33,13 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	/**
 	 * The engine instance reflection invokes against.
 	 *
-	 * @var WP_REST_Ability
+	 * @var Rest_Route_Ability
 	 */
 	private $ability;
 
 	public function set_up(): void {
 		parent::set_up();
-		$this->ability = new WP_REST_Ability(
+		$this->ability = new Rest_Route_Ability(
 			'probe/g3',
 			array(
 				'label'       => 'G3',
@@ -57,7 +57,7 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 * @return array{0: string, 1: string[]}|\WP_Error
 	 */
 	private function substitute( string $route, array $input ) {
-		$method = new ReflectionMethod( WP_REST_Ability::class, 'substitute_captures' );
+		$method = new ReflectionMethod( Rest_Route_Ability::class, 'substitute_captures' );
 		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $route, $input );
 	}
@@ -66,7 +66,7 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 * Invokes the protected encode_capture().
 	 */
 	private function encode( string $value, string $subpattern ): string {
-		$method = new ReflectionMethod( WP_REST_Ability::class, 'encode_capture' );
+		$method = new ReflectionMethod( Rest_Route_Ability::class, 'encode_capture' );
 		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $value, $subpattern );
 	}
@@ -75,7 +75,7 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 * Invokes the protected is_numeric_subpattern().
 	 */
 	private function is_numeric( string $subpattern ): bool {
-		$method = new ReflectionMethod( WP_REST_Ability::class, 'is_numeric_subpattern' );
+		$method = new ReflectionMethod( Rest_Route_Ability::class, 'is_numeric_subpattern' );
 		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $subpattern );
 	}

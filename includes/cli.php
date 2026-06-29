@@ -14,7 +14,7 @@
 
 declare( strict_types = 1 );
 
-use GalatanOvidiu\AbilitiesRestAdapter\WP_REST_Ability;
+use GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability;
 
 // Belt-and-suspenders: the boot only requires this file under WP-CLI, but guard
 // here too so a stray direct include cannot fatal on the missing WP_CLI class.
@@ -34,7 +34,7 @@ WP_CLI::add_command(
 	static function ( array $args, array $assoc_args ): void {
 		[ $route, $method ] = $args;
 
-		$info = WP_REST_Ability::describe( $route, $method );
+		$info = Rest_Route_Ability::describe( $route, $method );
 
 		// `--format=json` is a faithful dump of the snapshot — including the
 		// not-found case, where `found` is false and `error` carries the reason —

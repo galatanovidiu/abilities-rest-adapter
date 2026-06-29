@@ -20,7 +20,7 @@ use GalatanOvidiu\AbilitiesRestAdapter\Tests\AbilityTestCase;
 use WP_REST_Request;
 
 /**
- * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\WP_REST_Ability
+ * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability
  */
 final class PermissionSurfacingTest extends AbilityTestCase {
 

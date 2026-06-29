@@ -3,7 +3,7 @@
  * Public API for the Abilities REST Adapter.
  *
  * This is a global (unnamespaced) function — `wp_register_ability_from_rest_route()`
- * mirrors core's `wp_register_ability( $name, $args )`. The `WP_REST_Ability`
+ * mirrors core's `wp_register_ability( $name, $args )`. The `Rest_Route_Ability`
  * engine class is namespaced and autoloaded on demand.
  *
  * @package AbilitiesRestAdapter
@@ -11,7 +11,7 @@
 
 declare( strict_types = 1 );
 
-use GalatanOvidiu\AbilitiesRestAdapter\WP_REST_Ability;
+use GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability;
 
 if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
 	/**
@@ -97,6 +97,6 @@ if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
 			return null;
 		}
 
-		return wp_register_ability( $name, WP_REST_Ability::build_args( $name, $args ) );
+		return wp_register_ability( $name, Rest_Route_Ability::build_args( $name, $args ) );
 	}
 }

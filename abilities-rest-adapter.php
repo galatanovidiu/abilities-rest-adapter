@@ -28,10 +28,13 @@ define( 'ABILITIES_REST_ADAPTER_FILE', __FILE__ );
 define( 'ABILITIES_REST_ADAPTER_DIR', plugin_dir_path( __FILE__ ) );
 
 /**
- * No-build PSR-4 autoloader for the `GalatanOvidiu\AbilitiesRestAdapter\` namespace.
+ * No-build autoloader for the `GalatanOvidiu\AbilitiesRestAdapter\` namespace.
  *
- * Maps the namespace root to the `includes/` directory (no Composer step for
- * runtime). Registered before the bootstrap so adapter classes load on demand.
+ * Maps a class name to the WordPress class-file convention under `includes/` —
+ * lowercased, underscores to hyphens, with a `class-` prefix (so
+ * `Rest_Route_Ability` loads from `includes/class-rest-route-ability.php`). The
+ * namespace is flat (no sub-namespaces), so the class name maps straight to a file.
+ * Registered before the bootstrap so adapter classes load on demand.
  */
 spl_autoload_register(
 	static function ( string $class_name ): void {
@@ -41,19 +44,20 @@ spl_autoload_register(
 		}
 
 		$relative = substr( $class_name, strlen( $prefix ) );
-		$path     = ABILITIES_REST_ADAPTER_DIR . 'includes/' . str_replace( '\\', '/', $relative ) . '.php';
+		$file     = 'class-' . strtolower( str_replace( '_', '-', $relative ) ) . '.php';
+		$path     = ABILITIES_REST_ADAPTER_DIR . 'includes/' . $file;
 
 		if ( ! is_readable( $path ) ) {
 			return;
 		}
 
-		// phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable -- PSR-4 path built from a plugin constant and an internal class name, not user input.
+		// phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable -- Path built from a plugin constant and an internal class name, not user input.
 		require_once $path;
 	}
 );
 
 // Boot. Loads the public `wp_register_ability_from_rest_route()` helper. The
-// `WP_REST_Ability` engine class is autoloaded on demand. The Abilities API ships
+// `Rest_Route_Ability` engine class is autoloaded on demand. The Abilities API ships
 // with WordPress 6.9; without it there is nothing to register. The adapter does
 // not register a category — each ability declares an already-registered one.
 add_action(

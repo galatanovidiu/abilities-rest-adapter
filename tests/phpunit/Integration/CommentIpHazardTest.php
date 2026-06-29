@@ -20,7 +20,7 @@ namespace GalatanOvidiu\AbilitiesRestAdapter\Tests\Integration;
 use GalatanOvidiu\AbilitiesRestAdapter\Tests\AbilityTestCase;
 
 /**
- * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\WP_REST_Ability
+ * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability
  */
 final class CommentIpHazardTest extends AbilityTestCase {
 
