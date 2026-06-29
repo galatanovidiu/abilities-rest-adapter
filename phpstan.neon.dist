@@ -21,6 +21,10 @@ parameters:
 		max: 80500
 	bootstrapFiles:
 		- abilities-rest-adapter.php
+	# The WP_CLI class is only defined at runtime under `wp`; scan its stubs so the
+	# dev-only `includes/cli.php` command is type-checked like the rest of the code.
+	scanFiles:
+		- vendor/php-stubs/wp-cli-stubs/wp-cli-stubs.php
 	paths:
 		- abilities-rest-adapter.php
 		- includes/

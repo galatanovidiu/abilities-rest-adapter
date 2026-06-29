@@ -244,6 +244,85 @@ class WP_REST_Ability extends WP_Ability {
 	}
 
 	/**
+	 * Describes what the adapter derives from a route + method, without registering.
+	 *
+	 * A developer authoring affordance (the `wp ability describe-route` WP-CLI
+	 * command renders this): it constructs a throwaway instance, resolves it once,
+	 * and returns a plain snapshot — the derived input/output schemas, the path
+	 * captures and their types, whether the route is a collection, and whether it
+	 * is a write. It registers no ability and dispatches no route, and it needs no
+	 * current user; its only side effect is booting the REST server for route
+	 * discovery (`rest_get_server()`), which is idempotent.
+	 *
+	 * When `found` is false the route did not resolve: `error` carries the reason,
+	 * and `is_collection`/`readonly`/`captures`/`input_schema`/`output_schema` are
+	 * placeholders, not derived values. `output_schema` is an empty array whenever
+	 * no output schema is advertised — a not-found route, an `output_callback` with
+	 * no `output_schema`, or a route that exposes no item schema.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $route  A REST route pattern (e.g. `/wp/v2/posts/(?P<id>[\d]+)`).
+	 * @param string $method An HTTP method (e.g. `GET`).
+	 * @return array{
+	 *     route: string,
+	 *     method: string,
+	 *     found: bool,
+	 *     error: string|null,
+	 *     is_collection: bool,
+	 *     readonly: bool,
+	 *     captures: array<string, string>,
+	 *     input_schema: array<string, mixed>,
+	 *     output_schema: array<string, mixed>
+	 * } The route snapshot.
+	 */
+	public static function describe( string $route, string $method ): array {
+		$http_method = strtoupper( $method );
+
+		// A throwaway instance: placeholder label/description/category satisfy core's
+		// constructor (a subclass needs no execute/permission callback), and the
+		// rest_* keys drive resolution. Nothing is registered or dispatched, and the
+		// annotation/callback warnings of build_args() are deliberately bypassed —
+		// describing a route is not registering one.
+		$ability = new self(
+			'abilities-rest-adapter/describe-route',
+			array(
+				'label'       => 'describe-route',
+				'description' => 'describe-route',
+				'category'    => 'describe-route',
+				'rest_route'  => $route,
+				'rest_method' => $http_method,
+				'rest_args'   => array(),
+			)
+		);
+
+		$ability->resolve();
+
+		$resolve_error = $ability->resolve_error;
+		$found         = ( null === $resolve_error );
+		$error         = null !== $resolve_error ? $resolve_error->get_error_message() : null;
+
+		$captures = array();
+		if ( $found ) {
+			foreach ( $ability->capture_specs( $ability->resolved_route_key ) as $name => $subpattern ) {
+				$captures[ $name ] = $ability->is_numeric_subpattern( $subpattern ) ? 'integer' : 'string';
+			}
+		}
+
+		return array(
+			'route'         => $route,
+			'method'        => $http_method,
+			'found'         => $found,
+			'error'         => $error,
+			'is_collection' => $ability->is_collection,
+			'readonly'      => ( 'GET' === $http_method ),
+			'captures'      => $captures,
+			'input_schema'  => $ability->input_schema,
+			'output_schema' => $ability->output_schema,
+		);
+	}
+
+	/**
 	 * Retrieves the derived input schema (route args + required path captures).
 	 *
 	 * @since 0.1.0

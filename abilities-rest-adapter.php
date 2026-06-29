@@ -64,5 +64,12 @@ add_action(
 		}
 
 		require_once ABILITIES_REST_ADAPTER_DIR . 'includes/api.php';
+
+		// The dev-only `wp ability describe-route` command; never loaded outside WP-CLI.
+		if ( ! defined( 'WP_CLI' ) || ! WP_CLI ) {
+			return;
+		}
+
+		require_once ABILITIES_REST_ADAPTER_DIR . 'includes/cli.php';
 	}
 );
