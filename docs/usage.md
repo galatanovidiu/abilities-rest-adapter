@@ -212,6 +212,11 @@ know about how errors surface:
   the route rejects) — surfaces **faithfully** through `check_permissions()` as the
   real `WP_Error`.
 
+> **Note:** the permission check runs only the route's own `permission_callback`,
+> not request-level filters such as `rest_request_before_callbacks`. So a
+> `check_permissions()` of `true` means the route would allow the call, not that
+> dispatch is guaranteed to succeed.
+
 > **Note:** one `execute()` runs the route's `permission_callback` **twice** — once
 > for the adapter's permission check (which surfaces the real denial) and once
 > inside `rest_do_request()` at dispatch. A permission callback with side effects
@@ -284,4 +289,4 @@ complex capture (such as the FSE template `id`).
 > substituted path could also match a different, earlier-registered route — the
 > permission check and the dispatch resolve the handler independently. Core routes
 > do not overlap this way; wrap third-party routes with permissive captures with
-> care. See the `WP_REST_Ability` class docblock for the full caveat.
+> care.

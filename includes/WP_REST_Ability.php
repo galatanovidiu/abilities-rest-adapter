@@ -44,39 +44,11 @@ use stdClass;
  * route; when an `output_callback` is set without an `output_schema`, no output
  * schema is advertised and core skips output validation.
  *
- * Known limitations (v1):
- * - The permission check runs the route's own `permission_callback` on validated,
- *   sanitized params. It does not run request-level filters such as
- *   `rest_request_before_callbacks`, so a `check_permissions()` of `true` is not a
- *   guarantee that dispatch will succeed; and a parameter that fails validation
- *   surfaces here as a `WP_Error` (the same one dispatch would emit) rather than a
- *   boolean permission verdict.
- * - Input errors detected during the permission phase — a missing/invalid path
- *   capture, or a parameter that fails the route's own validation (which happens when
- *   a supplied `input_schema` is looser than the route, or an `input_callback` injects
- *   a value the route rejects) — surface faithfully via `check_permissions()` as the
- *   real `WP_Error`, but `execute()` collapses them to a generic
- *   `ability_invalid_permissions` and fires `_doing_it_wrong` (core's behaviour for
- *   any permission-phase error, not just denials). Read `check_permissions()` for the
- *   real reason, or advertise an `input_schema` that matches the route.
- * - An `input_callback` runs after the ability validates input against its (derived
- *   or supplied) schema, so it cannot supply a value the schema already requires:
- *   `execute( array() )` against a route with a required path capture fails input
- *   validation before the callback can inject the capture. To pin a fixed required
- *   capture, also pass an `input_schema` that does not mark it required.
- * - One `execute()` invokes the wrapped route's `permission_callback` twice — once
- *   here (to surface the real denial via `check_permissions()`) and once inside
- *   `rest_do_request()` at dispatch. A permission callback with side effects (rate
- *   limiting, audit logging, cached state) must tolerate running more than once per
- *   call, the same purity contract `input_callback` carries.
- * - Resolution matches the exact registered route pattern. For overlapping route
- *   patterns — where a substituted path could also match a different, earlier-
- *   registered route — the permission check and `rest_do_request()` resolve the
- *   handler independently. Per-capture encoding ({@see encode_capture()}) keeps a
- *   value that does not fit its own capture from traversing, but a value that fits
- *   a permissive capture and also satisfies a sibling route is not re-checked. Core
- *   routes do not overlap this way; third-party routes with permissive captures
- *   should be wrapped with care.
+ * The behavioral caveats — the permission phase mirrors per-route checks only (not
+ * request-level filters), `execute()` runs the route's `permission_callback` twice,
+ * an `input_callback` runs after input validation, and resolution matches the exact
+ * route pattern — are documented in `docs/usage.md` and flagged on the method that
+ * enforces each.
  *
  * @since 0.1.0
  */
@@ -485,6 +457,13 @@ class WP_REST_Ability extends WP_Ability {
 	 * against the `get_routes()` keys and picks the handler whose `methods`
 	 * include the configured method.
 	 *
+	 * Caveat: this matches the exact registered route pattern. For overlapping
+	 * patterns — where a substituted path could also match a different,
+	 * earlier-registered route — the permission check and dispatch resolve the
+	 * handler independently; {@see encode_capture()} keeps a value that does not fit
+	 * its own capture from traversing, but a value that fits a permissive capture
+	 * and a sibling route is not re-checked. Core routes do not overlap this way.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @return array{0: string, 1: array<string, mixed>}|null The `[route_key, handler]`, or `null` if not found.
@@ -806,6 +785,13 @@ class WP_REST_Ability extends WP_Ability {
 	 * `true` when the route allows the call — mirroring dispatch, which allows any
 	 * verdict that is not `false`/`null`/`WP_Error` — and a `WP_Error` otherwise.
 	 *
+	 * Caveat: this mirrors only the route's own `permission_callback`, not
+	 * request-level filters such as `rest_request_before_callbacks`, so a `true`
+	 * here means the route would allow the call, not that dispatch is guaranteed to
+	 * succeed. And one `execute()` runs this and then runs the same
+	 * `permission_callback` again inside `rest_do_request()`, so it fires twice per
+	 * call — a callback with side effects must tolerate that.
+	 *
 	 * @since 0.1.0
 	 *
 	 * @param mixed $input Optional. The ability input. Default `null`.
@@ -967,6 +953,11 @@ class WP_REST_Ability extends WP_Ability {
 	 * (so the permission callback can read them) and removed from the body/query
 	 * params. Exactly the supplied keys are forwarded — no schema defaults are
 	 * injected, so an explicit empty string stays an empty string.
+	 *
+	 * Caveat: `WP_Ability::execute()` validates the input against the ability's
+	 * schema before this runs, so an `input_callback` cannot supply a value the
+	 * schema already requires (e.g. a required path capture). To inject a fixed
+	 * required value, also pass an `input_schema` that does not mark it required.
 	 *
 	 * @since 0.1.0
 	 *
