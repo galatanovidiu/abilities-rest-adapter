@@ -494,15 +494,11 @@ class WP_REST_Ability extends WP_Ability {
 		}
 
 		foreach ( $routes[ $route ] as $handler ) {
-			if ( empty( $handler['methods'] ) ) {
-				continue;
-			}
-
-			$methods = $handler['methods'];
-			if ( is_array( $methods ) && ! empty( $methods[ $this->rest_method ] ) ) {
-				return array( $route, $handler );
-			}
-			if ( is_string( $methods ) && false !== strpos( $methods, $this->rest_method ) ) {
+			// `register_rest_route()` always normalizes `methods` to a verb-keyed array
+			// (`rest-api.php`: `$handler['methods'][ $method ] = true`), so a verb-keyed
+			// lookup is the only reachable case; `empty()` is null-safe for a route that
+			// somehow declares none.
+			if ( ! empty( $handler['methods'][ $this->rest_method ] ) ) {
 				return array( $route, $handler );
 			}
 		}
