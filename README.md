@@ -14,13 +14,14 @@ wp_register_ability_from_rest_route( 'my-plugin/list-posts', array(
 
 The signature mirrors core's `wp_register_ability( $name, $args )`. `route`, `method`, `label`, `description`, and `category` are required.
 
-**See [`docs/usage.md`](docs/usage.md)** for the full guide: the four seams (`input_callback` / `output_callback` / `input_schema` / `output_schema`), collections, the write-safety rule, the permission-error limitation, and the `wp ability describe-route` command.
+**See [`docs/usage.md`](docs/usage.md)** for the full guide: the five seams (`input_callback` / `output_callback` / `input_schema` / `output_schema` / `require_permission`), collections, the write-safety rule, the permission-error limitation, and the `wp ability describe-route` command.
 
 - **Reuse, don't re-implement.** Permission is the route's real check; output is the route's real body. A collection synthesizes `{ items, total, total_pages }` from the `X-WP-Total` headers.
 - **Facilitate, don't force.** The adapter gives the developer seams instead of baking in opinions:
   - `input_callback( array $params ): array|WP_Error` — transform the request before dispatch (set `_fields`, pin `context`, inject fixed params, reshape, or reject).
   - `output_callback( $data, array $input, WP_REST_Response $response ): mixed|WP_Error` — reshape a successful response (or reject it).
   - `input_schema` / `output_schema` — replace the schemas the adapter derives from the route.
+  - `require_permission( mixed $input ): bool|WP_Error` — an opt-in floor checked before the route's own permission; it can only tighten access, never widen it.
 - **Safety annotations (writes).** A write (any non-GET) must declare `destructive` and `idempotent` under `meta.annotations`; `readonly` is always derived from the method. Omitting them still registers but warns and leaves them unset (unknown, never a false "safe").
 - **Standalone now, core later.** Built as a feature plugin; designed so it can move into core.
 - **Status:** behavioral-equivalence + regression suite green on PHP 7.4–8.5.

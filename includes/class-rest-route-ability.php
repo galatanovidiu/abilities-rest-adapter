@@ -35,14 +35,17 @@ use stdClass;
  * - {@see do_execute()}        — dispatches the real route via `rest_do_request()`.
  *
  * The adapter facilitates adaptation; it does not resolve every problem centrally.
- * Decisions only the developer can make are made at registration via four optional
- * args: `input_callback`, `output_callback`, `input_schema`, `output_schema`. See
- * {@see wp_register_ability_from_rest_route()} for what each does.
+ * Decisions only the developer can make are made at registration via five optional
+ * args: `input_callback`, `output_callback`, `input_schema`, `output_schema`, and the
+ * opt-in `require_permission` guard. See {@see wp_register_ability_from_rest_route()}
+ * for what each does.
  *
  * The behavioral caveats — the permission phase mirrors per-route checks only (not
  * request-level filters), `execute()` runs the route's `permission_callback` twice,
- * an `input_callback` runs after input validation, and resolution matches the exact
- * route pattern — are flagged on the method that enforces each.
+ * an optional `require_permission` guard can only tighten (never widen) permission and
+ * runs once in that phase against the raw ability input, an `input_callback` runs after
+ * input validation, and resolution matches the exact route pattern — are flagged on the
+ * method that enforces each.
  *
  * @since 0.1.0
  */
@@ -65,8 +68,9 @@ class Rest_Route_Ability extends WP_Ability {
 	protected $rest_method = 'GET';
 
 	/**
-	 * The developer's registration args that drive resolution and dispatch
-	 * (`input_schema`, `output_schema`, `input_callback`, `output_callback`).
+	 * The developer's registration args that drive resolution, dispatch, and the
+	 * optional permission floor (`input_schema`, `output_schema`, `input_callback`,
+	 * `output_callback`, `require_permission`).
 	 *
 	 * @since 0.1.0
 	 * @var array<string, mixed>
@@ -160,7 +164,7 @@ class Rest_Route_Ability extends WP_Ability {
 
 		// A supplied callback must be callable; warn and ignore otherwise, so a
 		// typo'd callback fails loudly at registration instead of silently no-op'ing.
-		foreach ( array( 'input_callback', 'output_callback' ) as $callback_key ) {
+		foreach ( array( 'input_callback', 'output_callback', 'require_permission' ) as $callback_key ) {
 			if ( ! isset( $args[ $callback_key ] ) || is_callable( $args[ $callback_key ] ) ) {
 				continue;
 			}
@@ -779,12 +783,20 @@ class Rest_Route_Ability extends WP_Ability {
 	 * `true` when the route allows the call — mirroring dispatch, which allows any
 	 * verdict that is not `false`/`null`/`WP_Error` — and a `WP_Error` otherwise.
 	 *
+	 * An opt-in `require_permission` guard, if supplied, runs first — once, here in
+	 * the permission phase, before the route's own check. It is an AND-gate that can
+	 * only DENY: a passing verdict falls through to the route check (which stays the
+	 * authority), so the guard can never widen access. It sees the raw ability input,
+	 * before any `input_callback`, which suits a coarse floor (a capability, or
+	 * "logged in") rather than an object-level check on transformed data.
+	 *
 	 * Caveat: this mirrors only the route's own `permission_callback`, not
 	 * request-level filters such as `rest_request_before_callbacks`, so a `true`
 	 * here means the route would allow the call, not that dispatch is guaranteed to
 	 * succeed. And one `execute()` runs this and then runs the same
-	 * `permission_callback` again inside `rest_do_request()`, so it fires twice per
-	 * call — a callback with side effects must tolerate that.
+	 * `permission_callback` again inside `rest_do_request()`, so the route's callback
+	 * fires twice per call (the guard fires once) — a callback with side effects must
+	 * tolerate that.
 	 *
 	 * @since 0.1.0
 	 *
@@ -794,6 +806,27 @@ class Rest_Route_Ability extends WP_Ability {
 	protected function run_permission_check( $input = null ) {
 		if ( null !== $this->resolve_error ) {
 			return $this->resolve_error;
+		}
+
+		// Optional, opt-in permission floor. The developer's `require_permission`
+		// guard runs before the route's own check and can only tighten access: a
+		// truthy verdict falls through to the route check below, a bare false/null
+		// normalizes to the same `rest_forbidden` the route-denial path uses, and a
+		// WP_Error surfaces unchanged. A non-callable value was warned about and
+		// dropped at registration (see build_args()), so it is ignored here.
+		$guard = $this->rest_args['require_permission'] ?? null;
+		if ( is_callable( $guard ) ) {
+			$verdict = $guard( $input );
+			if ( is_wp_error( $verdict ) ) {
+				return $verdict;
+			}
+			if ( false === $verdict || null === $verdict ) {
+				return new WP_Error(
+					'rest_forbidden',
+					__( 'Sorry, you are not allowed to do that.', 'abilities-rest-adapter' ),
+					array( 'status' => rest_authorization_required_code() )
+				);
+			}
 		}
 
 		$permission_callback = isset( $this->rest_handler['permission_callback'] ) ? $this->rest_handler['permission_callback'] : null;

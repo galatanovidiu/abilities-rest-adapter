@@ -33,7 +33,9 @@ if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
 	 * since the adapter will not guess a safety hint that could be wrong.
 	 *
 	 * The adapter facilitates; it does not reshape on its own. Use the callbacks
-	 * and schema args to adapt the route to your ability.
+	 * and schema args to adapt the route to your ability. An opt-in
+	 * `require_permission` guard can add a stricter permission floor on top of the
+	 * route's own check (it can only tighten, never widen, access).
 	 *
 	 * @since 0.1.0
 	 *
@@ -62,6 +64,18 @@ if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
 	 *     @type array    $output_schema   Optional. Replaces the derived output schema (standard ability schema).
 	 *                                     When an `output_callback` is set and this is omitted, no output schema
 	 *                                     is advertised and output validation is skipped.
+	 *     @type callable $require_permission Optional. `fn( mixed $input ): bool|WP_Error`. An additive permission
+	 *                                     floor, checked BEFORE the route's own permission and only in the
+	 *                                     permission phase (so it fires once per `execute()`, unlike the route
+	 *                                     check, which fires twice). It can only tighten access, never widen it: a
+	 *                                     truthy verdict falls through to the route's check, which stays the
+	 *                                     authority and can still deny. `false`/`null` is denied as `rest_forbidden`;
+	 *                                     a `WP_Error` surfaces from `check_permissions()` unchanged (bare
+	 *                                     `execute()` collapses any permission error to a generic one, exactly as it
+	 *                                     does for the route's own denial). `$input` is the RAW ability input, before
+	 *                                     any `input_callback` — best for a coarse floor (a capability, or "logged
+	 *                                     in"), not an object-level check on transformed data. Runs as the current
+	 *                                     user; a standalone `check_permissions()` does not pre-validate input.
 	 *     @type array    $meta            Optional. Ability meta, including `annotations`; required for write methods.
 	 * }
 	 * @return \WP_Ability|null The registered ability, or `null` on failure.

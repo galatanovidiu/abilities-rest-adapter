@@ -14,7 +14,7 @@ limitation, and the `wp ability describe-route` command.
 
 - [Registering an ability](#registering-an-ability)
 - [What the adapter derives](#what-the-adapter-derives)
-- [The four seams](#the-four-seams)
+- [The five seams](#the-five-seams)
 - [Collections](#collections)
 - [Writes and safety annotations](#writes-and-safety-annotations)
 - [Permission errors: a known limitation](#permission-errors-a-known-limitation)
@@ -82,10 +82,12 @@ registered yet at call time), the adapter derives:
 Use [`wp ability describe-route`](#inspecting-a-route-wp-ability-describe-route)
 to see exactly what a route produces before you register it.
 
-## The four seams
+## The five seams
 
 The adapter **facilitates** adaptation; it does not reshape on its own. Decisions
-only you can make are made at registration through four optional args.
+only you can make are made at registration through five optional args — four that
+adapt the route (`input_callback`, `output_callback`, `input_schema`,
+`output_schema`) and one permission floor (`require_permission`).
 
 ### `input_callback`
 
@@ -148,6 +150,45 @@ the derived schema is wrong for your ability — for example, when an
 > response carries fields the derived schema does not list. Pass a matching
 > `output_schema` to keep the advertised schema honest.
 
+### `require_permission`
+
+```php
+'require_permission' => function ( $input ) {
+	// return true to allow, false/null to deny, or a WP_Error.
+	return current_user_can( 'edit_posts' );
+},
+```
+
+`fn( mixed $input ): bool|WP_Error`. An **opt-in permission floor** on top of the
+route's own check. The adapter is faithful to the route's permission by default,
+which is usually right — but a route can be more permissive than your ability
+should be (e.g. `GET /wp/v2/comments/<id>` lets anyone read an approved comment).
+This guard lets you re-impose a coarse floor without giving up the route's schema,
+validation, and dispatch.
+
+It can only **tighten** access, never widen it. The guard runs first, in the
+permission phase; if it passes, the route's own check still runs and remains the
+authority. So a guard that returns `true` can never grant access the route would
+deny — the two are an AND-gate.
+
+- Return `true` (or any truthy non-`WP_Error`) → allowed; the route decides next.
+- Return `false`/`null` → denied as `rest_forbidden` (401/403).
+- Return a `WP_Error` → that error is the denial.
+
+`$input` is the **raw** ability input, before any `input_callback`. That suits a
+coarse floor — a capability, or "must be logged in" — not an object-level check on
+transformed data.
+
+> **Note:** unlike the route's `permission_callback` (which fires twice per
+> `execute()`), the guard runs **once**, in the permission phase only. It runs as
+> the current user, and a standalone `check_permissions()` does not pre-validate
+> input, so keep the guard robust.
+
+> **Note:** a `WP_Error` from the guard surfaces unchanged through
+> `check_permissions()`. Bare `execute()` collapses it to the generic
+> `ability_invalid_permissions`, exactly as it does for the route's own denial —
+> see [Permission errors](#permission-errors-a-known-limitation).
+
 ## Collections
 
 A GET route that returns a list is detected as a collection when its handler
@@ -200,8 +241,9 @@ unsafe (ask first), never as a false "safe".
 ## Permission errors: a known limitation
 
 The adapter delegates the permission decision to the route's own
-`permission_callback`, run on validated and sanitized parameters. Two things to
-know about how errors surface:
+`permission_callback`, run on validated and sanitized parameters. (To require
+*more* than the route does, add a [`require_permission`](#require_permission)
+floor — it can tighten, never widen.) Two things to know about how errors surface:
 
 - **A denial** (the route returns `false`/`null`) becomes a `rest_forbidden` error
   with a 403 (logged in) or 401 (logged out) status — the same actionable error
