@@ -284,17 +284,21 @@ class WP_REST_Ability extends WP_Ability {
 	 *
 	 * @param string $route  A REST route pattern (e.g. `/wp/v2/posts/(?P<id>[\d]+)`).
 	 * @param string $method An HTTP method (e.g. `GET`).
-	 * @return array{
-	 *     route: string,
-	 *     method: string,
-	 *     found: bool,
-	 *     error: string|null,
-	 *     is_collection: bool,
-	 *     readonly: bool,
-	 *     captures: array<string, string>,
-	 *     input_schema: array<string, mixed>,
-	 *     output_schema: array<string, mixed>
-	 * } The route snapshot.
+	 * @return array<string, mixed> {
+	 *     The route snapshot.
+	 *
+	 *     @type string                $route         The REST route pattern.
+	 *     @type string                $method        The HTTP method, trimmed and uppercased.
+	 *     @type bool                  $found         Whether the route resolved.
+	 *     @type string|null           $error         The resolution error message, or null when found.
+	 *     @type bool                  $is_collection Whether the route is a collection (list) GET.
+	 *     @type bool                  $readonly      Whether the method is read-only (a GET).
+	 *     @type array<string, string> $captures      Map of path-capture name to type (`integer` or `string`).
+	 *     @type array<string, mixed>  $input_schema  The derived input schema.
+	 *     @type array<string, mixed>  $output_schema The derived output schema, or empty when none is advertised.
+	 * }
+	 *
+	 * @phpstan-return array{route: string, method: string, found: bool, error: string|null, is_collection: bool, readonly: bool, captures: array<string, string>, input_schema: array<string, mixed>, output_schema: array<string, mixed>}
 	 */
 	public static function describe( string $route, string $method ): array {
 		$http_method = strtoupper( trim( $method ) );
