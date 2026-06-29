@@ -67,6 +67,33 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 		return $method->invoke( $this->ability, $value );
 	}
 
+	/**
+	 * Invokes the protected detect_collection().
+	 *
+	 * @param array<string, mixed> $handler The route handler.
+	 */
+	private function detect_collection( array $handler ): bool {
+		$method = new ReflectionMethod( WP_REST_Ability::class, 'detect_collection' );
+		$method->setAccessible( true );
+		return $method->invoke( $this->ability, $handler );
+	}
+
+	public function test_get_items_callback_is_a_collection(): void {
+		$this->assertTrue( $this->detect_collection( array( 'callback' => array( $this->ability, 'get_items' ) ) ) );
+	}
+
+	public function test_pagination_args_alone_are_not_a_collection(): void {
+		$this->assertFalse(
+			$this->detect_collection(
+				array(
+					'callback' => static function (): void {},
+					'args'     => array( 'per_page' => array(), 'page' => array() ),
+				)
+			),
+			'pagination args no longer force the collection envelope'
+		);
+	}
+
 	public function test_strips_rest_internal_keys(): void {
 		$clean = $this->clean(
 			array(

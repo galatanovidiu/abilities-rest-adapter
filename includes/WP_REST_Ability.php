@@ -509,14 +509,17 @@ class WP_REST_Ability extends WP_Ability {
 	/**
 	 * Determines whether the wrapped route is a collection (list) GET.
 	 *
-	 * A GET handler is treated as a collection when its callback is a
-	 * controller's `get_items` method, or when it exposes a `per_page`/`page`
-	 * argument. The callback test catches controllers that return a list but
-	 * override `get_collection_params()` without re-adding `per_page` (e.g.
-	 * `WP_REST_Themes_Controller`); the args test catches closure-based list
-	 * handlers. This distinguishes `/wp/v2/posts` and `/wp/v2/themes`
-	 * (collections) from `/wp/v2/posts/(?P<id>[\d]+)` and `/wp/v2/users/me`
-	 * (single items).
+	 * A GET handler is a collection only when its callback is a controller's
+	 * `get_items` method — the reliable signal that the route returns a list,
+	 * including controllers that override `get_collection_params()` (e.g.
+	 * `WP_REST_Themes_Controller`). A `per_page`/`page` argument is deliberately
+	 * NOT treated as a collection signal: a route can paginate without returning a
+	 * list, and a false positive would advertise the `{ items, total, total_pages }`
+	 * envelope for a body that dispatch returns unwrapped. A closure-based list
+	 * route that is not a `get_items` controller should declare its shape with
+	 * `output_schema`/`output_callback`. This distinguishes `/wp/v2/posts` and
+	 * `/wp/v2/themes` (collections) from `/wp/v2/posts/(?P<id>[\d]+)` and
+	 * `/wp/v2/users/me` (single items).
 	 *
 	 * @since 0.1.0
 	 *
@@ -528,12 +531,10 @@ class WP_REST_Ability extends WP_Ability {
 			return false;
 		}
 
-		if ( isset( $handler['callback'] ) && is_array( $handler['callback'] ) && isset( $handler['callback'][1] ) && 'get_items' === $handler['callback'][1] ) {
-			return true;
-		}
-
-		$args = isset( $handler['args'] ) && is_array( $handler['args'] ) ? $handler['args'] : array();
-		return isset( $args['per_page'] ) || isset( $args['page'] );
+		return isset( $handler['callback'] )
+			&& is_array( $handler['callback'] )
+			&& isset( $handler['callback'][1] )
+			&& 'get_items' === $handler['callback'][1];
 	}
 
 	/**
