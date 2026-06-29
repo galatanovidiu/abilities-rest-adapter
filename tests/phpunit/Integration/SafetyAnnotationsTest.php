@@ -76,4 +76,34 @@ final class SafetyAnnotationsTest extends AbilityTestCase {
 		$this->assertFalse( $annotations['readonly'], 'write forced readonly:false despite the override' );
 		$this->assertTrue( $annotations['destructive'], 'developer destructive:true is preserved' );
 	}
+
+	/**
+	 * A1: a GET that the developer flags `readonly:false` (a side-effecting GET)
+	 * keeps that more-conservative value instead of being forced back to true.
+	 */
+	public function test_developer_readonly_false_on_get_is_honored(): void {
+		$counter = $this->register_ability(
+			'probe/view-counter',
+			array(
+				'route'  => '/wp/v2/posts',
+				'method' => 'GET',
+				'meta'   => array( 'annotations' => array( 'readonly' => false ) ),
+			)
+		);
+
+		$annotations = $counter->get_meta_item( 'annotations' );
+		$this->assertFalse( $annotations['readonly'], 'an explicit readonly:false on a GET is preserved' );
+	}
+
+	/**
+	 * A1: a plain GET (no opt-out) is still auto-marked read-only.
+	 */
+	public function test_plain_get_is_marked_readonly(): void {
+		$read = $this->register_ability(
+			'probe/read',
+			array( 'route' => '/wp/v2/posts', 'method' => 'GET' )
+		);
+
+		$this->assertTrue( $read->get_meta_item( 'annotations' )['readonly'], 'a GET defaults to readonly:true' );
+	}
 }

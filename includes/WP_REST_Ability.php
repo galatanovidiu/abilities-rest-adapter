@@ -155,10 +155,12 @@ class WP_REST_Ability extends WP_Ability {
 	 * the safety annotations are derived from the HTTP method. The schema,
 	 * permission, and execution are deferred to {@see resolve()}.
 	 *
-	 * Safety annotations follow the fail-safe rule (DSAFE): GET is auto-marked
-	 * `readonly`; a write that omits `destructive`/`idempotent` still registers
-	 * but triggers `_doing_it_wrong` and leaves them unset (`null` = "unknown",
-	 * which a consumer treats as ask-first — never a false "safe").
+	 * Safety annotations follow the fail-safe rule (DSAFE): a GET is marked
+	 * `readonly` unless the developer explicitly passes `readonly => false` (a GET
+	 * with side effects), and a write is always marked not-readonly. A write that
+	 * omits `destructive`/`idempotent` still registers but triggers `_doing_it_wrong`
+	 * and leaves them unset (`null` = "unknown", which a consumer treats as ask-first
+	 * — never a false "safe").
 	 *
 	 * @since 0.1.0
 	 *
@@ -227,11 +229,19 @@ class WP_REST_Ability extends WP_Ability {
 			);
 		}
 
-		// `readonly` is always derived from the method, never developer-controlled: a
-		// GET is read-only, any write is not. Assigned last so a stray developer-supplied
-		// `readonly` cannot mislabel a write as safe (DSAFE / principle 10). Only
-		// `destructive`/`idempotent` are the developer's to declare.
-		$annotations['readonly'] = $is_read;
+		// `readonly` is derived from the method, and a developer may only make it MORE
+		// conservative, never less. A write is never read-only: force `false`, overwriting
+		// any stray developer `readonly => true` that would mislabel a write as safe. A GET
+		// is read-only by default, but a developer who knows the GET has side effects (an
+		// oembed proxy, a view counter, a cache regen) may pass `readonly => false` to flag
+		// it as not-free-to-call; honor that explicit opt-out, otherwise force `true`. Only
+		// `destructive`/`idempotent` are otherwise the developer's to declare.
+		if ( ! $is_read ) {
+			$annotations['readonly'] = false;
+		} else {
+			$opted_out               = array_key_exists( 'readonly', $annotations ) && false === $annotations['readonly'];
+			$annotations['readonly'] = ! $opted_out;
+		}
 
 		$meta                = isset( $args['meta'] ) && is_array( $args['meta'] ) ? $args['meta'] : array();
 		$meta['annotations'] = $annotations;
