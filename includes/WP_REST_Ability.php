@@ -1025,6 +1025,17 @@ class WP_REST_Ability extends WP_Ability {
 			}
 			if ( '[' === $char ) {
 				++$pos;
+				// In PCRE a `]` is a literal when it is the first class member (after an
+				// optional negating `^`), so always consume one leading member — escaping
+				// if it is backslashed — before scanning for the closing `]`. Otherwise a
+				// class like `[])]` or `[^]]` ends the scan one bracket too early.
+				if ( $pos < $length && '^' === $route[ $pos ] ) {
+					++$pos;
+				}
+				if ( $pos < $length && '\\' === $route[ $pos ] ) {
+					++$pos;
+				}
+				++$pos;
 				while ( $pos < $length && ']' !== $route[ $pos ] ) {
 					if ( '\\' === $route[ $pos ] ) {
 						++$pos;
