@@ -692,7 +692,17 @@ class Rest_Route_Ability extends WP_Ability {
 		$required = array_values( array_unique( $required ) );
 		if ( ! empty( $required ) ) {
 			$schema['required'] = $required;
+			return $schema;
 		}
+
+		// No required input: the route accepts an empty call (a no-arg or all-optional
+		// route, e.g. a collection GET). `WP_Ability::execute()` invoked with no
+		// argument normalizes the input to the schema's top-level `default` and then
+		// validates it; without one, the input stays `null` and fails this schema's
+		// `type: object`, surfacing `ability_invalid_input` ("input is not of type
+		// object"). Default to an empty object so an empty call normalizes to `{}` and
+		// passes. A stdClass keeps it `{}` (not `[]`) for strict JSON Schema validators.
+		$schema['default'] = new stdClass();
 
 		return $schema;
 	}
