@@ -50,6 +50,23 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Builds a reflection handle for a non-public method under test.
+	 *
+	 * setAccessible() is required before PHP 8.1 to invoke a non-public method;
+	 * it is a no-op on 8.1+ and deprecated on 8.5, so it is only called where it
+	 * is still needed.
+	 *
+	 * @param string $name The method name on Rest_Route_Ability.
+	 */
+	private function accessible_method( string $name ): ReflectionMethod {
+		$method = new ReflectionMethod( Rest_Route_Ability::class, $name );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$method->setAccessible( true );
+		}
+		return $method;
+	}
+
+	/**
 	 * Invokes the protected substitute_captures().
 	 *
 	 * @param string               $route The route regex.
@@ -57,7 +74,7 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 * @return array{0: string, 1: string[]}|\WP_Error
 	 */
 	private function substitute( string $route, array $input ) {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'substitute_captures' );
+		$method = $this->accessible_method( 'substitute_captures' );
 		return $method->invoke( $this->ability, $route, $input );
 	}
 
@@ -65,7 +82,7 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 * Invokes the protected encode_capture().
 	 */
 	private function encode( string $value, string $subpattern ): string {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'encode_capture' );
+		$method = $this->accessible_method( 'encode_capture' );
 		return $method->invoke( $this->ability, $value, $subpattern );
 	}
 
@@ -73,7 +90,7 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 * Invokes the protected is_numeric_subpattern().
 	 */
 	private function is_numeric( string $subpattern ): bool {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'is_numeric_subpattern' );
+		$method = $this->accessible_method( 'is_numeric_subpattern' );
 		return $method->invoke( $this->ability, $subpattern );
 	}
 

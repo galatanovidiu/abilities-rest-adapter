@@ -44,6 +44,23 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Builds a reflection handle for a non-public method under test.
+	 *
+	 * setAccessible() is required before PHP 8.1 to invoke a non-public method;
+	 * it is a no-op on 8.1+ and deprecated on 8.5, so it is only called where it
+	 * is still needed.
+	 *
+	 * @param string $name The method name on Rest_Route_Ability.
+	 */
+	private function accessible_method( string $name ): ReflectionMethod {
+		$method = new ReflectionMethod( Rest_Route_Ability::class, $name );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$method->setAccessible( true );
+		}
+		return $method;
+	}
+
+	/**
 	 * Invokes the protected clean_schema_node().
 	 *
 	 * @param mixed $node           The schema node.
@@ -51,7 +68,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 * @return array<string, mixed>
 	 */
 	private function clean( $node, bool $strip_readonly ): array {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'clean_schema_node' );
+		$method = $this->accessible_method( 'clean_schema_node' );
 		return $method->invoke( $this->ability, $node, $strip_readonly );
 	}
 
@@ -61,7 +78,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 * @param mixed $value The value to test.
 	 */
 	private function is_list( $value ): bool {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'is_list' );
+		$method = $this->accessible_method( 'is_list' );
 		return $method->invoke( $this->ability, $value );
 	}
 
@@ -71,7 +88,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 * @param array<string, mixed> $handler The route handler.
 	 */
 	private function detect_collection( array $handler ): bool {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'detect_collection' );
+		$method = $this->accessible_method( 'detect_collection' );
 		return $method->invoke( $this->ability, $handler );
 	}
 
