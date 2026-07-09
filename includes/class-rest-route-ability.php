@@ -9,6 +9,7 @@ declare( strict_types = 1 );
 
 namespace GalatanOvidiu\AbilitiesRestAdapter;
 
+use Closure;
 use WP_Ability;
 use WP_Error;
 use WP_REST_Request;
@@ -76,7 +77,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var string
 	 */
-	protected $rest_route = '';
+	protected string $rest_route = '';
 
 	/**
 	 * The single HTTP method this ability wraps, uppercased.
@@ -84,7 +85,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var string
 	 */
-	protected $rest_method = 'GET';
+	protected string $rest_method = 'GET';
 
 	/**
 	 * The developer's registration args that drive resolution, dispatch, and the
@@ -94,7 +95,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var array<string, mixed>
 	 */
-	protected $rest_args = array();
+	protected array $rest_args = array();
 
 	/**
 	 * Whether resolution has run (memoization guard).
@@ -102,7 +103,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var bool
 	 */
-	protected $resolved = false;
+	protected bool $resolved = false;
 
 	/**
 	 * A resolution failure (route/handler not found), surfaced faithfully to callers.
@@ -110,7 +111,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var \WP_Error|null
 	 */
-	protected $resolve_error = null;
+	protected ?WP_Error $resolve_error = null;
 
 	/**
 	 * The matched route handler array, after resolution.
@@ -118,7 +119,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var array<string, mixed>|null
 	 */
-	protected $rest_handler = null;
+	protected ?array $rest_handler = null;
 
 	/**
 	 * The `get_routes()` key actually matched (the registered route regex).
@@ -126,7 +127,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var string
 	 */
-	protected $resolved_route_key = '';
+	protected string $resolved_route_key = '';
 
 	/**
 	 * Whether the wrapped route is a paginated collection (drives the output envelope).
@@ -134,7 +135,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var bool
 	 */
-	protected $is_collection = false;
+	protected bool $is_collection = false;
 
 	/**
 	 * Builds the `wp_register_ability()` args for a REST-backed ability.
@@ -183,42 +184,25 @@ class Rest_Route_Ability extends WP_Ability {
 			);
 		}
 
-		// A supplied callback must be callable; warn and ignore otherwise, so a
-		// typo'd callback fails loudly at registration instead of silently no-op'ing.
-		foreach ( array( 'input_callback', 'output_callback', 'require_permission' ) as $callback_key ) {
-			if ( ! isset( $args[ $callback_key ] ) || is_callable( $args[ $callback_key ] ) ) {
-				continue;
-			}
-			_doing_it_wrong(
-				'wp_register_ability_from_rest_route',
-				sprintf(
-					/* translators: 1: callback arg name, 2: ability name. */
-					esc_html__( 'The `%1$s` for ability "%2$s" must be callable; the supplied value was ignored.', 'abilities-rest-adapter' ),
-					esc_html( $callback_key ),
-					esc_html( $name )
-				),
-				'0.1.0'
-			);
-		}
-
-		// A supplied schema must be an array; warn and ignore otherwise (mirrors the
-		// callback guard above), so a malformed schema does not silently fall back to
-		// the derived one without the developer noticing.
-		foreach ( array( 'input_schema', 'output_schema' ) as $schema_key ) {
-			if ( ! isset( $args[ $schema_key ] ) || is_array( $args[ $schema_key ] ) ) {
-				continue;
-			}
-			_doing_it_wrong(
-				'wp_register_ability_from_rest_route',
-				sprintf(
-					/* translators: 1: schema arg name, 2: ability name. */
-					esc_html__( 'The `%1$s` for ability "%2$s" must be an array; the supplied value was ignored.', 'abilities-rest-adapter' ),
-					esc_html( $schema_key ),
-					esc_html( $name )
-				),
-				'0.1.0'
-			);
-		}
+		// A supplied callback must be callable and a supplied schema must be an array;
+		// warn and ignore a wrong-typed value so a typo fails loudly at registration
+		// instead of silently no-op'ing or falling back to the derived schema unnoticed.
+		self::warn_unless_valid(
+			$name,
+			$args,
+			array( 'input_callback', 'output_callback', 'require_permission' ),
+			'is_callable',
+			/* translators: 1: callback arg name, 2: ability name. */
+			__( 'The `%1$s` for ability "%2$s" must be callable; the supplied value was ignored.', 'abilities-rest-adapter' )
+		);
+		self::warn_unless_valid(
+			$name,
+			$args,
+			array( 'input_schema', 'output_schema' ),
+			'is_array',
+			/* translators: 1: schema arg name, 2: ability name. */
+			__( 'The `%1$s` for ability "%2$s" must be an array; the supplied value was ignored.', 'abilities-rest-adapter' )
+		);
 
 		// `readonly` is derived from the method, and a developer may only make it MORE
 		// conservative, never less. A write is never read-only: force `false`, overwriting
@@ -268,6 +252,32 @@ class Rest_Route_Ability extends WP_Ability {
 			'rest_method'   => $method,
 			'rest_args'     => $args,
 		);
+	}
+
+	/**
+	 * Warns via `_doing_it_wrong` for each arg in `$keys` that is set but fails
+	 * `$predicate`, catching a wrong-typed registration value at registration time.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string               $name      The ability name, for the message.
+	 * @param array<string, mixed> $args      The developer's registration args.
+	 * @param array<int, string>   $keys      The arg keys to validate.
+	 * @param callable             $predicate Returns true when a value is the right type.
+	 * @param string               $message   A sprintf format with `%1$s` (arg key) and `%2$s` (ability name).
+	 * @return void
+	 */
+	private static function warn_unless_valid( string $name, array $args, array $keys, callable $predicate, string $message ): void {
+		foreach ( $keys as $key ) {
+			if ( ! isset( $args[ $key ] ) || $predicate( $args[ $key ] ) ) {
+				continue;
+			}
+			_doing_it_wrong(
+				'wp_register_ability_from_rest_route',
+				esc_html( sprintf( $message, $key, $name ) ),
+				'0.1.0'
+			);
+		}
 	}
 
 	/**
@@ -495,19 +505,9 @@ class Rest_Route_Ability extends WP_Ability {
 		}
 
 		// Wire the callbacks (idempotent across retries) so the parent machinery runs.
-		//
-		// Two permission checks run at two different times, NOT one check duplicated:
-		//
-		//   permission_callback (here, at check_permissions()) — runs ONLY the optional
-		//     `require_permission` guard. With no guard it is effectively always `true`.
-		//     It does NOT check the REST route's permission.
-		//   execute_callback (later, at do_execute()) — dispatches via rest_do_request(),
-		//     and THAT is where the REST route's own permission_callback actually fires.
-		//
-		// This is deliberate: keeping the first check at "true" (or just the guard) stops
-		// WP_Ability::execute() from collapsing the route's real error — 403/404/400 — into
-		// a generic `ability_invalid_permissions`. The route stays the authority; the agent
-		// gets the real reason. See the class docblock's "Permission model".
+		// The permission callback runs only the optional `require_permission` guard; the
+		// route's own permission check fires later, at dispatch inside the execute
+		// callback. See the class docblock's "Permission model" for why they are split.
 		$this->permission_callback = function ( $input = null ) {
 			return $this->run_permission_check( $input );
 		};
@@ -836,6 +836,20 @@ class Rest_Route_Ability extends WP_Ability {
 				}
 
 				unset( $node['properties'][ $prop_name ] );
+
+				// Drop the just-removed property from any sibling `required` list, else the
+				// schema would require a field it no longer has. An emptied `required` is
+				// dropped entirely (matches derive_input_schema()'s convention).
+				if ( ! isset( $node['required'] ) || ! is_array( $node['required'] ) ) {
+					continue;
+				}
+
+				$node['required'] = array_values( array_diff( $node['required'], array( $prop_name ) ) );
+				if ( ! empty( $node['required'] ) ) {
+					continue;
+				}
+
+				unset( $node['required'] );
 			}
 		}
 
@@ -852,7 +866,7 @@ class Rest_Route_Ability extends WP_Ability {
 			if ( $value instanceof stdClass ) {
 				$value = (array) $value;
 			}
-			if ( $value instanceof \Closure || is_object( $value ) ) {
+			if ( $value instanceof Closure || is_object( $value ) ) {
 				continue;
 			}
 			if ( is_array( $value ) ) {
@@ -904,28 +918,16 @@ class Rest_Route_Ability extends WP_Ability {
 
 	/**
 	 * Runs the ability-level permission floor: the optional `require_permission`
-	 * guard, and nothing else.
+	 * guard, and nothing else. The wrapped route's own `permission_callback` runs
+	 * later, at dispatch — see the class docblock's "Permission model" for why the two
+	 * are split (it is what lets the route's real error reach the caller).
 	 *
-	 * This is phase 1 of the two-layer permission model (see the class docblock). The
-	 * wrapped route's OWN `permission_callback` is deliberately NOT called here — it
-	 * runs in phase 2, inside `rest_do_request()` during {@see do_execute()}, exactly
-	 * as over HTTP. So per `execute()` the route's callback fires once (at dispatch),
-	 * not twice, and the guard fires once (here).
-	 *
-	 * Why the route check is deferred: `WP_Ability::execute()` collapses any non-`true`
-	 * return from here into a generic `ability_invalid_permissions` and fires
-	 * `_doing_it_wrong`. Returning `true` for everything except a guard denial lets the
-	 * route's real verdict — allow, or a faithful `rest_forbidden` / `rest_post_invalid_id`
-	 * / `rest_invalid_param` — pass through `do_execute()` untouched to the caller.
-	 *
-	 * The guard is the ONE check dispatch does not repeat (it is the adapter's, not the
-	 * route's), so it must be enforced here. It can only DENY: a truthy verdict returns
-	 * `true` and hands authority to the route's dispatch-time check; `false`/`null`
-	 * becomes `rest_forbidden`; a `WP_Error` surfaces unchanged (then `execute()` collapses
-	 * it like any denial — the legitimate "hide the reason" case). It sees the RAW ability
-	 * input, before any `input_callback`, which suits a coarse floor (a capability, or
-	 * "logged in") rather than an object-level check on transformed data. A non-callable
-	 * guard was warned about and dropped at registration (see {@see build_args()}).
+	 * The guard can only DENY: a truthy verdict returns `true` and hands authority to
+	 * the route's dispatch-time check; any falsey verdict (`false`, `null`, `0`, `''`,
+	 * `array()`) becomes `rest_forbidden`; a `WP_Error` surfaces unchanged. It sees the
+	 * RAW ability input, before any `input_callback`, which suits a coarse floor (a
+	 * capability, or "logged in") rather than an object-level check on transformed data.
+	 * A non-callable guard was warned about and dropped at registration (see {@see build_args()}).
 	 *
 	 * @since 0.1.0
 	 *
@@ -943,10 +945,11 @@ class Rest_Route_Ability extends WP_Ability {
 			return $verdict;
 		}
 
-		// A bare false/null denial normalizes to the same `rest_forbidden` (401/403)
-		// a route denial returns at dispatch, so a consumer reading check_permissions()
-		// sees an actionable code and status, not a bare false.
-		if ( false === $verdict || null === $verdict ) {
+		// Any falsey verdict (false, null, 0, '', array()) denies, normalizing to the
+		// same `rest_forbidden` (401/403) a route denial returns at dispatch, so a
+		// consumer reading check_permissions() sees an actionable code and status, not a
+		// bare false. A WP_Error was already returned above; only a truthy verdict allows.
+		if ( ! $verdict ) {
 			return new WP_Error(
 				'rest_forbidden',
 				__( 'Sorry, you are not allowed to do that.', 'abilities-rest-adapter' ),
@@ -1051,22 +1054,30 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 *
 	 * @param mixed $input The ability input.
-	 * @return \WP_REST_Request|\WP_Error The prepared request, or a `WP_Error` if the input callback rejects it or a required capture is missing.
+	 * @return \WP_REST_Request|\WP_Error The prepared request, or a `WP_Error` if the input callback rejects it or returns a non-array value, or {@see substitute_captures()} rejects a path capture (missing, non-scalar, or not fitting the route pattern).
 	 */
 	protected function build_request( $input ) {
 		$input = is_array( $input ) ? $input : array();
 
 		// The developer's input callback transforms the params before the request is
 		// built — set `_fields`, pin `context`, inject fixed params, reshape, or return
-		// a WP_Error to reject. It runs once per execute(), at dispatch (the permission
-		// phase is guard-only and builds no request).
+		// a WP_Error to reject. A return that is neither an array nor a WP_Error fails
+		// closed with `rest_invalid_input_callback` (500). It runs once per execute(), at
+		// dispatch (the permission phase is guard-only and builds no request).
 		$input_callback = $this->rest_args['input_callback'] ?? null;
 		if ( is_callable( $input_callback ) ) {
 			$transformed = $input_callback( $input );
 			if ( is_wp_error( $transformed ) ) {
 				return $transformed;
 			}
-			$input = is_array( $transformed ) ? $transformed : array();
+			if ( ! is_array( $transformed ) ) {
+				return new WP_Error(
+					'rest_invalid_input_callback',
+					__( 'The input callback returned an invalid value; it must return an array or a WP_Error.', 'abilities-rest-adapter' ),
+					array( 'status' => 500 )
+				);
+			}
+			$input = $transformed;
 		}
 
 		$path = $this->substitute_captures( $this->resolved_route_key, $input );
@@ -1075,28 +1086,11 @@ class Rest_Route_Ability extends WP_Ability {
 		}
 		[ $route, $consumed ] = $path;
 
+		// The consumed captures become url_params — dispatch's permission callback and
+		// handler read them from the path, mirroring HTTP — and drop out of the body/query.
 		$url_params = array();
 		$params     = $input;
 		foreach ( $consumed as $name => $encoded ) {
-			// Mirror HTTP. Core derives url_params from the route-regex match against the
-			// URL path, which dispatch never decodes (see encode_capture()), so the value
-			// the permission callback reads is the path-encoded form, not the raw input.
-			// And a value encode_capture() had to escape cannot satisfy the capture's
-			// sub-pattern, so over HTTP no route matches this path — a `rest_no_route` 404
-			// before any permission callback runs. Return that same error so a standalone
-			// check_permissions() never reports an authz verdict for a request HTTP would
-			// never dispatch (dispatch returns the identical error, so execute() is unchanged).
-			if ( (string) $input[ $name ] !== $encoded ) {
-				return new WP_Error(
-					'rest_no_route',
-					sprintf(
-						/* translators: %s: path parameter name. */
-						__( 'The "%s" path parameter does not fit the route pattern; no REST route matches it.', 'abilities-rest-adapter' ),
-						$name
-					),
-					array( 'status' => 404 )
-				);
-			}
 			$url_params[ $name ] = $encoded;
 			unset( $params[ $name ] );
 		}
@@ -1120,8 +1114,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * nest groups and character classes (e.g. the FSE template id, whose capture
 	 * body holds a `(?:…)` group), so the first `)` is not the group's end. The
 	 * scan honors backslash escapes and skips `[...]` character classes (where `)`
-	 * is a literal). Both capture scanners — {@see substitute_captures()} and
-	 * {@see capture_specs()} — share it.
+	 * is a literal). The single capture scan {@see iterate_captures()} uses it.
 	 *
 	 * @since 0.1.0
 	 *
@@ -1171,17 +1164,59 @@ class Rest_Route_Ability extends WP_Ability {
 	}
 
 	/**
+	 * Iterates the `(?P<name>…)` path-capture groups in a route regex.
+	 *
+	 * The single capture scan that {@see substitute_captures()} and
+	 * {@see capture_specs()} both consume: locate each named group with `preg_match`,
+	 * find its balanced end with {@see find_capture_end()}, slice its sub-pattern, and
+	 * advance past it. Yields one record per capture in source order.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param string $route The registered route regex.
+	 * @return iterable<array{name: string, group_start: int, group_end: int, subpattern: string, depth: int}>
+	 *     Per capture: its name; the offset of the opening `(`; the offset just past the
+	 *     closing `)`; the sub-pattern between them; and the residual nesting depth from
+	 *     {@see find_capture_end()} (0 = the group closed cleanly).
+	 */
+	protected function iterate_captures( string $route ): iterable {
+		$offset = 0;
+		$length = strlen( $route );
+
+		while ( preg_match( '/\(\?P<([^>]+)>/', $route, $matches, PREG_OFFSET_CAPTURE, $offset ) ) {
+			$group_start      = (int) $matches[0][1];
+			$subpattern_start = $group_start + strlen( $matches[0][0] );
+
+			[ $group_end, $depth ] = $this->find_capture_end( $route, $subpattern_start, $length );
+
+			yield array(
+				'name'        => $matches[1][0],
+				'group_start' => $group_start,
+				'group_end'   => $group_end,
+				'subpattern'  => substr( $route, $subpattern_start, $group_end - 1 - $subpattern_start ),
+				'depth'       => $depth,
+			);
+
+			$offset = $group_end;
+		}
+	}
+
+	/**
 	 * Substitutes `(?P<name>…)` path captures with encoded input values.
 	 *
-	 * Scans each capture body with {@see find_capture_end()}. A missing required
-	 * capture is reported as a 400 input error, not a permission error.
+	 * Scans the captures with {@see iterate_captures()}. A missing or non-scalar
+	 * capture is a 400 input error. A scalar value that {@see encode_capture()} must
+	 * escape does not fit its own sub-pattern, so no route would match the resulting
+	 * path over HTTP — that is a `rest_no_route` 404, refused here rather than
+	 * dispatched, so dispatch and a standalone `check_permissions()` never report an
+	 * authorization verdict for a path HTTP would never route.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @param string               $route The registered route regex.
 	 * @param array<string, mixed> $input The ability input.
-	 * @return array{0: string, 1: array<string, string>}|\WP_Error The `[path, consumed]` where `consumed` maps each
-	 *                                                              consumed capture name to its encoded value, or a `WP_Error`.
+	 * @return array{0: string, 1: array<string, string>}|\WP_Error The `[path, consumed]` — `consumed` maps each
+	 *                                                              consumed capture name to its path value — or a `WP_Error`.
 	 */
 	protected function substitute_captures( string $route, array $input ) {
 		$result   = '';
@@ -1189,23 +1224,27 @@ class Rest_Route_Ability extends WP_Ability {
 		$consumed = array();
 		$missing  = array();
 		$invalid  = array();
-		$length   = strlen( $route );
+		$no_match = array();
 
-		while ( preg_match( '/\(\?P<([^>]+)>/', $route, $matches, PREG_OFFSET_CAPTURE, $offset ) ) {
-			$name             = $matches[1][0];
-			$group_start      = (int) $matches[0][1];
-			$subpattern_start = $group_start + strlen( $matches[0][0] );
+		foreach ( $this->iterate_captures( $route ) as $capture ) {
+			$name        = $capture['name'];
+			$group_start = $capture['group_start'];
+			$group_end   = $capture['group_end'];
 
 			$result .= substr( $route, $offset, $group_start - $offset );
 
-			[ $group_end, $depth ] = $this->find_capture_end( $route, $subpattern_start, $length );
-			$subpattern            = substr( $route, $subpattern_start, $group_end - 1 - $subpattern_start );
-
-			if ( 0 === $depth && array_key_exists( $name, $input ) && is_scalar( $input[ $name ] ) ) {
-				$encoded           = $this->encode_capture( (string) $input[ $name ], $subpattern );
+			if ( 0 === $capture['depth'] && array_key_exists( $name, $input ) && is_scalar( $input[ $name ] ) ) {
+				$encoded           = $this->encode_capture( (string) $input[ $name ], $capture['subpattern'] );
 				$result           .= $encoded;
 				$consumed[ $name ] = $encoded;
-			} elseif ( 0 === $depth && array_key_exists( $name, $input ) ) {
+
+				// A value encode_capture() had to escape cannot satisfy its own sub-pattern,
+				// so over HTTP no route matches this path — a 404 before any permission
+				// callback runs. Flag it (reported below) rather than dispatching it.
+				if ( (string) $input[ $name ] !== $encoded ) {
+					$no_match[] = $name;
+				}
+			} elseif ( 0 === $capture['depth'] && array_key_exists( $name, $input ) ) {
 				$invalid[] = $name;
 				$result   .= substr( $route, $group_start, $group_end - $group_start );
 			} else {
@@ -1239,6 +1278,18 @@ class Rest_Route_Ability extends WP_Ability {
 					implode( ', ', $missing )
 				),
 				array( 'status' => 400 )
+			);
+		}
+
+		if ( ! empty( $no_match ) ) {
+			return new WP_Error(
+				'rest_no_route',
+				sprintf(
+					/* translators: %s: path parameter name. */
+					__( 'The "%s" path parameter does not fit the route pattern; no REST route matches it.', 'abilities-rest-adapter' ),
+					$no_match[0]
+				),
+				array( 'status' => 404 )
 			);
 		}
 
@@ -1279,18 +1330,9 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @return array<string, string> Map of capture name to sub-pattern.
 	 */
 	protected function capture_specs( string $route ): array {
-		$specs  = array();
-		$offset = 0;
-		$length = strlen( $route );
-
-		while ( preg_match( '/\(\?P<([^>]+)>/', $route, $matches, PREG_OFFSET_CAPTURE, $offset ) ) {
-			$name             = $matches[1][0];
-			$group_start      = (int) $matches[0][1];
-			$subpattern_start = $group_start + strlen( $matches[0][0] );
-
-			[ $group_end ]  = $this->find_capture_end( $route, $subpattern_start, $length );
-			$specs[ $name ] = substr( $route, $subpattern_start, $group_end - 1 - $subpattern_start );
-			$offset         = $group_end;
+		$specs = array();
+		foreach ( $this->iterate_captures( $route ) as $capture ) {
+			$specs[ $capture['name'] ] = $capture['subpattern'];
 		}
 
 		return $specs;

@@ -104,7 +104,13 @@ final class RequirePermissionTest extends AbilityTestCase {
 		wp_set_current_user( 0 );
 
 		// Baseline: no guard, the public route allows.
-		$open = $this->register_ability( 'rp/open', array( 'route' => '/arat-test/v1/public-read', 'method' => 'GET' ) );
+		$open = $this->register_ability(
+			'rp/open',
+			array(
+				'route'  => '/arat-test/v1/public-read',
+				'method' => 'GET',
+			)
+		);
 		$this->assertTrue( $open->check_permissions( array() ), 'the public route allows without a guard' );
 
 		// Same route, deny-all guard: forbidden.
@@ -125,6 +131,49 @@ final class RequirePermissionTest extends AbilityTestCase {
 
 		$data = $perm->get_error_data();
 		$this->assertContains( (int) $data['status'], array( 401, 403 ), 'status from rest_authorization_required_code()' );
+	}
+
+	/**
+	 * Any falsey guard verdict denies, not just `false`/`null`: `0`, `''`, and
+	 * `array()` each become `rest_forbidden`, while a non-boolean truthy verdict allows.
+	 */
+	public function test_falsey_guard_verdicts_all_deny(): void {
+		wp_set_current_user( 0 );
+
+		// Each non-boolean falsey verdict denies with the same rest_forbidden floor.
+		foreach ( array(
+			'int-zero'     => 0,
+			'empty-string' => '',
+			'empty-array'  => array(),
+		) as $label => $verdict ) {
+			$ability = $this->register_ability(
+				'rp/falsey-' . $label,
+				array(
+					'route'              => '/arat-test/v1/public-read',
+					'method'             => 'GET',
+					'require_permission' => static function () use ( $verdict ) {
+						return $verdict;
+					},
+				)
+			);
+
+			$perm = $ability->check_permissions( array() );
+			$this->assertTrue( is_wp_error( $perm ), "a falsey ({$label}) guard denies the call" );
+			$this->assertSame( 'rest_forbidden', $perm->get_error_code(), "a falsey ({$label}) guard uses the rest_forbidden floor" );
+		}
+
+		// A non-boolean truthy verdict still allows (the guard passes to the route).
+		$truthy = $this->register_ability(
+			'rp/truthy-int',
+			array(
+				'route'              => '/arat-test/v1/public-read',
+				'method'             => 'GET',
+				'require_permission' => static function () {
+					return 1;
+				},
+			)
+		);
+		$this->assertTrue( $truthy->check_permissions( array() ), 'a truthy (non-boolean) guard allows' );
 	}
 
 	/**
@@ -197,7 +246,7 @@ final class RequirePermissionTest extends AbilityTestCase {
 			array(
 				'route'              => '/arat-test/v1/counted',
 				'method'             => 'GET',
-				'require_permission' => function () use ( &$guard_calls ) {
+				'require_permission' => static function () use ( &$guard_calls ) {
 					++$guard_calls;
 					return true;
 				},
@@ -218,7 +267,13 @@ final class RequirePermissionTest extends AbilityTestCase {
 	public function test_absent_guard_passes_and_route_decides(): void {
 		wp_set_current_user( 0 );
 
-		$ability = $this->register_ability( 'rp/none', array( 'route' => '/arat-test/v1/public-read', 'method' => 'GET' ) );
+		$ability = $this->register_ability(
+			'rp/none',
+			array(
+				'route'  => '/arat-test/v1/public-read',
+				'method' => 'GET',
+			)
+		);
 
 		$this->assertTrue( $ability->check_permissions( array() ), 'no guard → permission phase passes' );
 		$this->assertSame( array(), $ability->execute( array() ), 'the public route allows at dispatch' );

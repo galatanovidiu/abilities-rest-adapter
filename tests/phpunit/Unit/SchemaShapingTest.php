@@ -16,8 +16,8 @@ namespace GalatanOvidiu\AbilitiesRestAdapter\Tests\Unit;
 
 use GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability;
 use ReflectionMethod;
-use stdClass;
 use WP_UnitTestCase;
+use stdClass;
 
 /**
  * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability
@@ -27,7 +27,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	/**
 	 * The engine instance reflection invokes against.
 	 *
-	 * @var Rest_Route_Ability
+	 * @var \GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability
 	 */
 	private $ability;
 
@@ -44,6 +44,23 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Builds a reflection handle for a non-public method under test.
+	 *
+	 * setAccessible() is required before PHP 8.1 to invoke a non-public method;
+	 * it is a no-op on 8.1+ and deprecated on 8.5, so it is only called where it
+	 * is still needed.
+	 *
+	 * @param string $name The method name on Rest_Route_Ability.
+	 */
+	private function accessible_method( string $name ): ReflectionMethod {
+		$method = new ReflectionMethod( Rest_Route_Ability::class, $name );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$method->setAccessible( true );
+		}
+		return $method;
+	}
+
+	/**
 	 * Invokes the protected clean_schema_node().
 	 *
 	 * @param mixed $node           The schema node.
@@ -51,8 +68,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 * @return array<string, mixed>
 	 */
 	private function clean( $node, bool $strip_readonly ): array {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'clean_schema_node' );
-		$method->setAccessible( true );
+		$method = $this->accessible_method( 'clean_schema_node' );
 		return $method->invoke( $this->ability, $node, $strip_readonly );
 	}
 
@@ -62,8 +78,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 * @param mixed $value The value to test.
 	 */
 	private function is_list( $value ): bool {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'is_list' );
-		$method->setAccessible( true );
+		$method = $this->accessible_method( 'is_list' );
 		return $method->invoke( $this->ability, $value );
 	}
 
@@ -73,8 +88,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 * @param array<string, mixed> $handler The route handler.
 	 */
 	private function detect_collection( array $handler ): bool {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'detect_collection' );
-		$method->setAccessible( true );
+		$method = $this->accessible_method( 'detect_collection' );
 		return $method->invoke( $this->ability, $handler );
 	}
 
@@ -87,7 +101,10 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 			$this->detect_collection(
 				array(
 					'callback' => static function (): void {},
-					'args'     => array( 'per_page' => array(), 'page' => array() ),
+					'args'     => array(
+						'per_page' => array(),
+						'page'     => array(),
+					),
 				)
 			),
 			'pagination args alone do not force the collection envelope'
@@ -151,6 +168,40 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 
 		$this->assertArrayHasKey( 'writable', $clean['properties'] );
 		$this->assertArrayNotHasKey( 'computed', $clean['properties'] );
+	}
+
+	public function test_input_prunes_readonly_property_from_sibling_required(): void {
+		$clean = $this->clean(
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'id'   => array( 'readonly' => true ),
+					'name' => array( 'type' => 'string' ),
+				),
+				'required'   => array( 'id', 'name' ),
+			),
+			true
+		);
+
+		$this->assertArrayNotHasKey( 'id', $clean['properties'] );
+		$this->assertArrayHasKey( 'name', $clean['properties'] );
+		$this->assertSame( array( 'name' ), $clean['required'], 'the pruned readonly prop is gone from required' );
+	}
+
+	public function test_input_drops_required_when_only_prop_is_readonly(): void {
+		$clean = $this->clean(
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'id' => array( 'readonly' => true ),
+				),
+				'required'   => array( 'id' ),
+			),
+			true
+		);
+
+		$this->assertEquals( new stdClass(), $clean['properties'], 'the only prop was readonly, so properties empties to {}' );
+		$this->assertArrayNotHasKey( 'required', $clean, 'an emptied required is dropped entirely' );
 	}
 
 	public function test_empty_properties_normalizes_to_object(): void {
@@ -242,7 +293,14 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 
 	public function test_is_list_rejects_associative_and_non_arrays(): void {
 		$this->assertFalse( $this->is_list( array( 'a' => 1 ) ) );
-		$this->assertFalse( $this->is_list( array( 1 => 'a', 0 => 'b' ) ) );
+		$this->assertFalse(
+			$this->is_list(
+				array(
+					1 => 'a',
+					0 => 'b',
+				)
+			)
+		);
 		$this->assertFalse( $this->is_list( 'string' ) );
 		$this->assertFalse( $this->is_list( 5 ) );
 	}

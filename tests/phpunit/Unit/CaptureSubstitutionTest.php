@@ -3,8 +3,8 @@
  * Path-capture substitution and per-capture encoding (G3).
  *
  * Covers four capture cases: a permissive capture round-trips raw, a numeric
- * capture is a no-op, a traversal attempt is encoded (fail closed), and the
- * balanced-paren scan survives nested groups. Reaches the protected engine
+ * capture is a no-op, a traversal attempt is refused as no-route (fail closed),
+ * and the balanced-paren scan survives nested groups. Reaches the protected engine
  * methods via reflection on a bare instance (the subclass skips the
  * execute/permission-callback requirement, so minimal args construct cleanly).
  *
@@ -50,6 +50,23 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Builds a reflection handle for a non-public method under test.
+	 *
+	 * setAccessible() is required before PHP 8.1 to invoke a non-public method;
+	 * it is a no-op on 8.1+ and deprecated on 8.5, so it is only called where it
+	 * is still needed.
+	 *
+	 * @param string $name The method name on Rest_Route_Ability.
+	 */
+	private function accessible_method( string $name ): ReflectionMethod {
+		$method = new ReflectionMethod( Rest_Route_Ability::class, $name );
+		if ( PHP_VERSION_ID < 80100 ) {
+			$method->setAccessible( true );
+		}
+		return $method;
+	}
+
+	/**
 	 * Invokes the protected substitute_captures().
 	 *
 	 * @param string               $route The route regex.
@@ -57,8 +74,7 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 * @return array{0: string, 1: string[]}|\WP_Error
 	 */
 	private function substitute( string $route, array $input ) {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'substitute_captures' );
-		$method->setAccessible( true );
+		$method = $this->accessible_method( 'substitute_captures' );
 		return $method->invoke( $this->ability, $route, $input );
 	}
 
@@ -66,8 +82,7 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 * Invokes the protected encode_capture().
 	 */
 	private function encode( string $value, string $subpattern ): string {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'encode_capture' );
-		$method->setAccessible( true );
+		$method = $this->accessible_method( 'encode_capture' );
 		return $method->invoke( $this->ability, $value, $subpattern );
 	}
 
@@ -75,8 +90,7 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 * Invokes the protected is_numeric_subpattern().
 	 */
 	private function is_numeric( string $subpattern ): bool {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, 'is_numeric_subpattern' );
-		$method->setAccessible( true );
+		$method = $this->accessible_method( 'is_numeric_subpattern' );
 		return $method->invoke( $this->ability, $subpattern );
 	}
 
@@ -90,9 +104,11 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 		$this->assertSame( '/wp/v2/posts/123', $path );
 	}
 
-	public function test_traversal_on_numeric_capture_is_encoded(): void {
-		list( $path ) = $this->substitute( self::NUM, array( 'id' => '12/3' ) );
-		$this->assertStringContainsString( '%2F', $path, 'fail closed: a value the capture forbids is encoded' );
+	public function test_traversal_on_numeric_capture_is_refused_as_no_route(): void {
+		$result = $this->substitute( self::NUM, array( 'id' => '12/3' ) );
+		$this->assertTrue( is_wp_error( $result ), 'a value the capture forbids does not route' );
+		$this->assertSame( 'rest_no_route', $result->get_error_code(), 'fail closed: no route matches an escaped path' );
+		$this->assertSame( 404, (int) $result->get_error_data()['status'] );
 	}
 
 	public function test_nested_paren_scan_keeps_trailing_segment(): void {
