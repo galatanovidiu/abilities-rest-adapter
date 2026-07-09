@@ -18,6 +18,7 @@ limitation, and the `wp ability describe-route` command.
 - [Collections](#collections)
 - [Writes and safety annotations](#writes-and-safety-annotations)
 - [How permission errors surface](#how-permission-errors-surface)
+- [Extending with filters](#extending-with-filters)
 - [Inspecting a route: `wp ability describe-route`](#inspecting-a-route-wp-ability-describe-route)
 
 ## Registering an ability
@@ -100,11 +101,12 @@ adapt the route (`input_callback`, `output_callback`, `input_schema`,
 
 `fn( array $params ): array|WP_Error`. Transforms the request parameters before
 the request is built. Use it to set `_fields`, pin a `context`, inject fixed
-parameters, or reshape the input. Return a `WP_Error` to reject the call.
+parameters, or reshape the input. Return a `WP_Error` to reject the call; a return
+that is neither an array nor a `WP_Error` fails closed as `rest_invalid_input_callback`
+(500).
 
-**It must be pure.** It can run more than once per call — once for the permission
-check and once for the dispatch — so do not let it depend on call order or cause
-side effects.
+It runs **once** per `execute()`, at dispatch — the permission phase runs only the
+`require_permission` guard and builds no request.
 
 > **Note:** the callback runs *after* the ability validates the input against its
 > schema. It can inject an **optional** parameter (e.g. `per_page`, `context`),
@@ -172,7 +174,8 @@ authority. So a guard that returns `true` can never grant access the route would
 deny — the two are an AND-gate.
 
 - Return `true` (or any truthy non-`WP_Error`) → allowed; the route decides next.
-- Return `false`/`null` → denied as `rest_forbidden` (401/403).
+- Return any falsey value (`false`, `null`, `0`, `''`, `array()`) → denied as
+  `rest_forbidden` (401/403).
 - Return a `WP_Error` → that error is the denial.
 
 `$input` is the **raw** ability input, before any `input_callback`. That suits a
@@ -228,9 +231,12 @@ wp_register_ability_from_rest_route( 'my-plugin/trash-post', array(
 ) );
 ```
 
-- **`readonly`** is always derived from the method — `true` for GET, `false` for a
-  write — and **cannot** be set by you. A stray `readonly: true` on a write is
-  overridden, so a write can never be mislabeled as safe.
+- **`readonly`** is derived from the method — `true` for GET, `false` for a write.
+  A write is **always** `false`: a stray `readonly: true` on a write is overridden,
+  so a write can never be mislabeled as safe. A GET defaults to `true`, but if you
+  know the GET has side effects (an oEmbed proxy, a view counter, a cache regen) you
+  may pass `readonly: false` to flag it as not free to call. You can only make a GET
+  *more* conservative this way — you can never mark a write safe.
 - **`destructive`** and **`idempotent`** are yours to declare. They describe
   behavior only you know.
 
@@ -279,6 +285,45 @@ the `wp_ability_permission_result` filter (WordPress 7.1+).
 > route's check, so an ability may report "allowed" yet still be denied by the route at
 > `execute()` time. A callback with side effects (rate limiting, audit logging) runs
 > once per `execute()`.
+
+## Extending with filters
+
+Two filters let a consumer adapt an ability it did **not** register — for example a
+site-wide policy layer wrapping every REST-backed ability. They complement the
+per-registration seams above, and reach state the registration args cannot.
+
+### `abilities_rest_adapter_input_schema`
+
+```php
+add_filter( 'abilities_rest_adapter_input_schema', function ( array $schema, string $name, array $rest_args ) {
+	// Add a property the route itself does not declare.
+	return $schema;
+}, 10, 3 );
+```
+
+Filters the derived input schema. The schema is derived lazily and is not present in
+the registration args, so a `wp_register_ability_args` filter cannot reach it — this
+is the seam that can. Use it, for example, in a multisite policy layer that injects
+an optional `blog_id` the route does not advertise.
+
+### `abilities_rest_adapter_dispatch_wrapper`
+
+```php
+add_filter( 'abilities_rest_adapter_dispatch_wrapper', function ( $wrapper, string $name, $input ) {
+	return function ( callable $proceed, $input ) {
+		// Run dispatch inside a context, and/or adjust $input first.
+		return $proceed( $input );
+	};
+}, 10, 3 );
+```
+
+Wraps dispatch. The wrapper is `fn( callable $proceed, mixed $input ): mixed`, where
+`$proceed( $input )` performs the normal dispatch; return `null` (the default) to
+dispatch unwrapped. Because the adapter's real permission check runs *at* dispatch
+(inside `rest_do_request()`), wrapping dispatch runs both the route's permission check
+and its handler inside your context — the two never split. A multisite policy layer,
+for instance, can open a balanced `switch_to_blog()` around `$proceed()` and strip its
+own `blog_id` from `$input` first.
 
 ## Inspecting a route: `wp ability describe-route`
 

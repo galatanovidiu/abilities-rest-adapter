@@ -70,7 +70,7 @@ if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
 	 *                                     dispatch (inside `rest_do_request()`), so the guard fires once per
 	 *                                     `execute()` and the route check fires once. The guard can only tighten
 	 *                                     access, never widen it: a truthy verdict defers to the route's own check,
-	 *                                     which stays the authority and can still deny at dispatch. `false`/`null` is
+	 *                                     which stays the authority and can still deny at dispatch. A falsey verdict is
 	 *                                     denied as `rest_forbidden`; a `WP_Error` surfaces from `check_permissions()`
 	 *                                     unchanged. Bare `execute()` collapses the guard's denial — like any
 	 *                                     permission error — to a generic `ability_invalid_permissions`; the route's
