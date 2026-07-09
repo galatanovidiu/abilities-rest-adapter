@@ -1,5 +1,8 @@
 # Abilities REST Adapter
 
+[![Packagist Version](https://img.shields.io/packagist/v/galatanovidiu/abilities-rest-adapter)](https://packagist.org/packages/galatanovidiu/abilities-rest-adapter)
+[![Packagist Downloads](https://img.shields.io/packagist/dt/galatanovidiu/abilities-rest-adapter)](https://packagist.org/packages/galatanovidiu/abilities-rest-adapter)
+
 Define a WordPress [Abilities API](https://github.com/WordPress/abilities-api) ability by **reusing an existing REST API route** — its schema, validation, permission check, and handler — instead of re-implementing them. The adapter dispatches the real route via `rest_do_request()`, so the ability stays behaviorally equivalent to the endpoint.
 
 ```php
@@ -38,7 +41,8 @@ The dev environment (`.wp-env.json`) tracks current WordPress trunk (7.1-alpha) 
 ### As a Composer dependency (plugin developers)
 
 Plugin developers can install the adapter as a Composer dependency and use
-`wp_register_ability_from_rest_route()` from their own plugin:
+`wp_register_ability_from_rest_route()` from their own plugin. The package is
+published on [Packagist](https://packagist.org/packages/galatanovidiu/abilities-rest-adapter):
 
 ```bash
 composer require galatanovidiu/abilities-rest-adapter
