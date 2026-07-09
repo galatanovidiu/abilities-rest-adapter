@@ -505,19 +505,9 @@ class Rest_Route_Ability extends WP_Ability {
 		}
 
 		// Wire the callbacks (idempotent across retries) so the parent machinery runs.
-		//
-		// Two permission checks run at two different times, NOT one check duplicated:
-		//
-		//   permission_callback (here, at check_permissions()) — runs ONLY the optional
-		//     `require_permission` guard. With no guard it is effectively always `true`.
-		//     It does NOT check the REST route's permission.
-		//   execute_callback (later, at do_execute()) — dispatches via rest_do_request(),
-		//     and THAT is where the REST route's own permission_callback actually fires.
-		//
-		// This is deliberate: keeping the first check at "true" (or just the guard) stops
-		// WP_Ability::execute() from collapsing the route's real error — 403/404/400 — into
-		// a generic `ability_invalid_permissions`. The route stays the authority; the agent
-		// gets the real reason. See the class docblock's "Permission model".
+		// The permission callback runs only the optional `require_permission` guard; the
+		// route's own permission check fires later, at dispatch inside the execute
+		// callback. See the class docblock's "Permission model" for why they are split.
 		$this->permission_callback = function ( $input = null ) {
 			return $this->run_permission_check( $input );
 		};
@@ -928,28 +918,16 @@ class Rest_Route_Ability extends WP_Ability {
 
 	/**
 	 * Runs the ability-level permission floor: the optional `require_permission`
-	 * guard, and nothing else.
+	 * guard, and nothing else. The wrapped route's own `permission_callback` runs
+	 * later, at dispatch — see the class docblock's "Permission model" for why the two
+	 * are split (it is what lets the route's real error reach the caller).
 	 *
-	 * This is phase 1 of the two-layer permission model (see the class docblock). The
-	 * wrapped route's OWN `permission_callback` is deliberately NOT called here — it
-	 * runs in phase 2, inside `rest_do_request()` during {@see do_execute()}, exactly
-	 * as over HTTP. So per `execute()` the route's callback fires once (at dispatch),
-	 * not twice, and the guard fires once (here).
-	 *
-	 * Why the route check is deferred: `WP_Ability::execute()` collapses any non-`true`
-	 * return from here into a generic `ability_invalid_permissions` and fires
-	 * `_doing_it_wrong`. Returning `true` for everything except a guard denial lets the
-	 * route's real verdict — allow, or a faithful `rest_forbidden` / `rest_post_invalid_id`
-	 * / `rest_invalid_param` — pass through `do_execute()` untouched to the caller.
-	 *
-	 * The guard is the ONE check dispatch does not repeat (it is the adapter's, not the
-	 * route's), so it must be enforced here. It can only DENY: a truthy verdict returns
-	 * `true` and hands authority to the route's dispatch-time check; any falsey verdict
-	 * becomes `rest_forbidden`; a `WP_Error` surfaces unchanged (then `execute()` collapses
-	 * it like any denial — the legitimate "hide the reason" case). It sees the RAW ability
-	 * input, before any `input_callback`, which suits a coarse floor (a capability, or
-	 * "logged in") rather than an object-level check on transformed data. A non-callable
-	 * guard was warned about and dropped at registration (see {@see build_args()}).
+	 * The guard can only DENY: a truthy verdict returns `true` and hands authority to
+	 * the route's dispatch-time check; any falsey verdict (`false`, `null`, `0`, `''`,
+	 * `array()`) becomes `rest_forbidden`; a `WP_Error` surfaces unchanged. It sees the
+	 * RAW ability input, before any `input_callback`, which suits a coarse floor (a
+	 * capability, or "logged in") rather than an object-level check on transformed data.
+	 * A non-callable guard was warned about and dropped at registration (see {@see build_args()}).
 	 *
 	 * @since 0.1.0
 	 *
