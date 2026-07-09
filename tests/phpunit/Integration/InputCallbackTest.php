@@ -43,7 +43,14 @@ final class InputCallbackTest extends AbilityTestCase {
 			return $params;
 		};
 
-		$post   = $this->register_ability( 'in/post-fields', array( 'route' => '/wp/v2/posts/(?P<id>[\d]+)', 'method' => 'GET', 'input_callback' => $callback ) );
+		$post   = $this->register_ability(
+			'in/post-fields',
+			array(
+				'route'          => '/wp/v2/posts/(?P<id>[\d]+)',
+				'method'         => 'GET',
+				'input_callback' => $callback,
+			)
+		);
 		$result = $post->execute( array( 'id' => $this->post_id ) );
 
 		$this->assertIsArray( $result );
@@ -59,7 +66,14 @@ final class InputCallbackTest extends AbilityTestCase {
 			return $params;
 		};
 
-		$posts    = $this->register_ability( 'in/posts-one', array( 'route' => '/wp/v2/posts', 'method' => 'GET', 'input_callback' => $callback ) );
+		$posts    = $this->register_ability(
+			'in/posts-one',
+			array(
+				'route'          => '/wp/v2/posts',
+				'method'         => 'GET',
+				'input_callback' => $callback,
+			)
+		);
 		$envelope = $posts->execute( array() );
 
 		$this->assertIsArray( $envelope );
@@ -75,11 +89,49 @@ final class InputCallbackTest extends AbilityTestCase {
 			return new \WP_Error( 'in_rejected', 'Rejected by input callback.', array( 'status' => 400 ) );
 		};
 
-		$post   = $this->register_ability( 'in/reject', array( 'route' => '/wp/v2/posts/(?P<id>[\d]+)', 'method' => 'GET', 'input_callback' => $callback ) );
+		$post   = $this->register_ability(
+			'in/reject',
+			array(
+				'route'          => '/wp/v2/posts/(?P<id>[\d]+)',
+				'method'         => 'GET',
+				'input_callback' => $callback,
+			)
+		);
 		$result = $post->execute( array( 'id' => $this->post_id ) );
 
 		$this->assertTrue( is_wp_error( $result ) );
 		$this->assertSame( 'in_rejected', $result->get_error_code() );
+	}
+
+	/**
+	 * A callback returning something other than an array or WP_Error fails closed:
+	 * execute() surfaces a 500 rest_invalid_input_callback error instead of dispatching.
+	 * Covers a scalar int, a string, and null — each is neither an array nor a WP_Error.
+	 */
+	public function test_non_array_non_error_callback_return_fails_closed(): void {
+		foreach ( array(
+			'scalar-int' => 5,
+			'string'     => 'x',
+			'null'       => null,
+		) as $label => $return ) {
+			$callback = static function () use ( $return ) {
+				return $return;
+			};
+
+			$post   = $this->register_ability(
+				'in/bad-return-' . $label,
+				array(
+					'route'          => '/wp/v2/posts/(?P<id>[\d]+)',
+					'method'         => 'GET',
+					'input_callback' => $callback,
+				)
+			);
+			$result = $post->execute( array( 'id' => $this->post_id ) );
+
+			$this->assertTrue( is_wp_error( $result ), "a {$label} return fails closed" );
+			$this->assertSame( 'rest_invalid_input_callback', $result->get_error_code(), "a {$label} return uses rest_invalid_input_callback" );
+			$this->assertSame( 500, $result->get_error_data()['status'], "a {$label} return is a 500" );
+		}
 	}
 
 	/**
@@ -88,7 +140,14 @@ final class InputCallbackTest extends AbilityTestCase {
 	public function test_non_callable_input_callback_warns_and_is_ignored(): void {
 		$this->setExpectedIncorrectUsage( 'wp_register_ability_from_rest_route' );
 
-		$post = $this->register_ability( 'in/bad', array( 'route' => '/wp/v2/posts/(?P<id>[\d]+)', 'method' => 'GET', 'input_callback' => 'definitely_not_a_callable_fn' ) );
+		$post = $this->register_ability(
+			'in/bad',
+			array(
+				'route'          => '/wp/v2/posts/(?P<id>[\d]+)',
+				'method'         => 'GET',
+				'input_callback' => 'definitely_not_a_callable_fn',
+			)
+		);
 		$this->assertNotNull( $post, 'still registers' );
 
 		$result = $post->execute( array( 'id' => $this->post_id ) );
@@ -115,7 +174,12 @@ final class InputCallbackTest extends AbilityTestCase {
 				'route'        => '/wp/v2/posts',
 				'method'       => 'POST',
 				'input_schema' => $schema,
-				'meta'         => array( 'annotations' => array( 'destructive' => false, 'idempotent' => false ) ),
+				'meta'         => array(
+					'annotations' => array(
+						'destructive' => false,
+						'idempotent'  => false,
+					),
+				),
 			)
 		);
 
@@ -155,7 +219,12 @@ final class InputCallbackTest extends AbilityTestCase {
 					),
 					'additionalProperties' => false,
 				),
-				'meta'           => array( 'annotations' => array( 'destructive' => false, 'idempotent' => false ) ),
+				'meta'           => array(
+					'annotations' => array(
+						'destructive' => false,
+						'idempotent'  => false,
+					),
+				),
 			)
 		);
 

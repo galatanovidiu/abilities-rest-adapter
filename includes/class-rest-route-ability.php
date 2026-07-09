@@ -9,6 +9,7 @@ declare( strict_types = 1 );
 
 namespace GalatanOvidiu\AbilitiesRestAdapter;
 
+use Closure;
 use WP_Ability;
 use WP_Error;
 use WP_REST_Request;
@@ -76,7 +77,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var string
 	 */
-	protected $rest_route = '';
+	protected string $rest_route = '';
 
 	/**
 	 * The single HTTP method this ability wraps, uppercased.
@@ -84,7 +85,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var string
 	 */
-	protected $rest_method = 'GET';
+	protected string $rest_method = 'GET';
 
 	/**
 	 * The developer's registration args that drive resolution, dispatch, and the
@@ -94,7 +95,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var array<string, mixed>
 	 */
-	protected $rest_args = array();
+	protected array $rest_args = array();
 
 	/**
 	 * Whether resolution has run (memoization guard).
@@ -102,7 +103,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var bool
 	 */
-	protected $resolved = false;
+	protected bool $resolved = false;
 
 	/**
 	 * A resolution failure (route/handler not found), surfaced faithfully to callers.
@@ -110,7 +111,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var \WP_Error|null
 	 */
-	protected $resolve_error = null;
+	protected ?WP_Error $resolve_error = null;
 
 	/**
 	 * The matched route handler array, after resolution.
@@ -118,7 +119,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var array<string, mixed>|null
 	 */
-	protected $rest_handler = null;
+	protected ?array $rest_handler = null;
 
 	/**
 	 * The `get_routes()` key actually matched (the registered route regex).
@@ -126,7 +127,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var string
 	 */
-	protected $resolved_route_key = '';
+	protected string $resolved_route_key = '';
 
 	/**
 	 * Whether the wrapped route is a paginated collection (drives the output envelope).
@@ -134,7 +135,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 * @var bool
 	 */
-	protected $is_collection = false;
+	protected bool $is_collection = false;
 
 	/**
 	 * Builds the `wp_register_ability()` args for a REST-backed ability.
@@ -836,6 +837,20 @@ class Rest_Route_Ability extends WP_Ability {
 				}
 
 				unset( $node['properties'][ $prop_name ] );
+
+				// Drop the just-removed property from any sibling `required` list, else the
+				// schema would require a field it no longer has. An emptied `required` is
+				// dropped entirely (matches derive_input_schema()'s convention).
+				if ( ! isset( $node['required'] ) || ! is_array( $node['required'] ) ) {
+					continue;
+				}
+
+				$node['required'] = array_values( array_diff( $node['required'], array( $prop_name ) ) );
+				if ( ! empty( $node['required'] ) ) {
+					continue;
+				}
+
+				unset( $node['required'] );
 			}
 		}
 
@@ -852,7 +867,7 @@ class Rest_Route_Ability extends WP_Ability {
 			if ( $value instanceof stdClass ) {
 				$value = (array) $value;
 			}
-			if ( $value instanceof \Closure || is_object( $value ) ) {
+			if ( $value instanceof Closure || is_object( $value ) ) {
 				continue;
 			}
 			if ( is_array( $value ) ) {
@@ -920,7 +935,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 *
 	 * The guard is the ONE check dispatch does not repeat (it is the adapter's, not the
 	 * route's), so it must be enforced here. It can only DENY: a truthy verdict returns
-	 * `true` and hands authority to the route's dispatch-time check; `false`/`null`
+	 * `true` and hands authority to the route's dispatch-time check; any falsey verdict
 	 * becomes `rest_forbidden`; a `WP_Error` surfaces unchanged (then `execute()` collapses
 	 * it like any denial — the legitimate "hide the reason" case). It sees the RAW ability
 	 * input, before any `input_callback`, which suits a coarse floor (a capability, or
@@ -943,10 +958,11 @@ class Rest_Route_Ability extends WP_Ability {
 			return $verdict;
 		}
 
-		// A bare false/null denial normalizes to the same `rest_forbidden` (401/403)
-		// a route denial returns at dispatch, so a consumer reading check_permissions()
-		// sees an actionable code and status, not a bare false.
-		if ( false === $verdict || null === $verdict ) {
+		// Any falsey verdict (false, null, 0, '', array()) denies, normalizing to the
+		// same `rest_forbidden` (401/403) a route denial returns at dispatch, so a
+		// consumer reading check_permissions() sees an actionable code and status, not a
+		// bare false. A WP_Error was already returned above; only a truthy verdict allows.
+		if ( ! $verdict ) {
 			return new WP_Error(
 				'rest_forbidden',
 				__( 'Sorry, you are not allowed to do that.', 'abilities-rest-adapter' ),
@@ -1051,22 +1067,30 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 *
 	 * @param mixed $input The ability input.
-	 * @return \WP_REST_Request|\WP_Error The prepared request, or a `WP_Error` if the input callback rejects it or a required capture is missing.
+	 * @return \WP_REST_Request|\WP_Error The prepared request, or a `WP_Error` if the input callback rejects it or returns a non-array value, or a required capture is missing.
 	 */
 	protected function build_request( $input ) {
 		$input = is_array( $input ) ? $input : array();
 
 		// The developer's input callback transforms the params before the request is
 		// built — set `_fields`, pin `context`, inject fixed params, reshape, or return
-		// a WP_Error to reject. It runs once per execute(), at dispatch (the permission
-		// phase is guard-only and builds no request).
+		// a WP_Error to reject. A return that is neither an array nor a WP_Error fails
+		// closed with `rest_invalid_input_callback` (500). It runs once per execute(), at
+		// dispatch (the permission phase is guard-only and builds no request).
 		$input_callback = $this->rest_args['input_callback'] ?? null;
 		if ( is_callable( $input_callback ) ) {
 			$transformed = $input_callback( $input );
 			if ( is_wp_error( $transformed ) ) {
 				return $transformed;
 			}
-			$input = is_array( $transformed ) ? $transformed : array();
+			if ( ! is_array( $transformed ) ) {
+				return new WP_Error(
+					'rest_invalid_input_callback',
+					__( 'The input callback returned an invalid value; it must return an array or a WP_Error.', 'abilities-rest-adapter' ),
+					array( 'status' => 500 )
+				);
+			}
+			$input = $transformed;
 		}
 
 		$path = $this->substitute_captures( $this->resolved_route_key, $input );
