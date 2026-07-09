@@ -52,7 +52,6 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 */
 	private function clean( $node, bool $strip_readonly ): array {
 		$method = new ReflectionMethod( Rest_Route_Ability::class, 'clean_schema_node' );
-		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $node, $strip_readonly );
 	}
 
@@ -63,7 +62,6 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 */
 	private function is_list( $value ): bool {
 		$method = new ReflectionMethod( Rest_Route_Ability::class, 'is_list' );
-		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $value );
 	}
 
@@ -74,7 +72,6 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	 */
 	private function detect_collection( array $handler ): bool {
 		$method = new ReflectionMethod( Rest_Route_Ability::class, 'detect_collection' );
-		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $handler );
 	}
 

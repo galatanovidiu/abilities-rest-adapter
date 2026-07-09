@@ -58,7 +58,6 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 */
 	private function substitute( string $route, array $input ) {
 		$method = new ReflectionMethod( Rest_Route_Ability::class, 'substitute_captures' );
-		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $route, $input );
 	}
 
@@ -67,7 +66,6 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 */
 	private function encode( string $value, string $subpattern ): string {
 		$method = new ReflectionMethod( Rest_Route_Ability::class, 'encode_capture' );
-		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $value, $subpattern );
 	}
 
@@ -76,7 +74,6 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	 */
 	private function is_numeric( string $subpattern ): bool {
 		$method = new ReflectionMethod( Rest_Route_Ability::class, 'is_numeric_subpattern' );
-		$method->setAccessible( true );
 		return $method->invoke( $this->ability, $subpattern );
 	}
 
