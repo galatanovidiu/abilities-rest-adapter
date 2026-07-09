@@ -33,6 +33,80 @@ The signature mirrors core's `wp_register_ability( $name, $args )`. `route`, `me
 
 The dev environment (`.wp-env.json`) tracks current WordPress trunk (7.1-alpha) so the 7.1 filter is available.
 
+## Installation
+
+### As a Composer dependency (plugin developers)
+
+Plugin developers can install the adapter as a Composer dependency and use
+`wp_register_ability_from_rest_route()` from their own plugin:
+
+```bash
+composer require galatanovidiu/abilities-rest-adapter
+```
+
+#### Using Jetpack Autoloader (recommended)
+
+When multiple plugins bundle this adapter, use the
+[Jetpack Autoloader](https://github.com/Automattic/jetpack-autoloader) so only
+the latest shared version loads:
+
+```bash
+composer require automattic/jetpack-autoloader
+```
+
+Load it in your main plugin file instead of the standard Composer autoloader:
+
+```php
+require_once plugin_dir_path( __FILE__ ) . 'vendor/autoload_packages.php';
+```
+
+#### Using the adapter in your plugin
+
+Check availability and register abilities on `wp_abilities_api_init`:
+
+```php
+add_action( 'plugins_loaded', function () {
+	if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
+		return;
+	}
+
+	add_action( 'wp_abilities_api_init', function () {
+		wp_register_ability_from_rest_route( 'my-plugin/get-post', array(
+			'route'       => '/wp/v2/posts/(?P<id>[\d]+)',
+			'method'      => 'GET',
+			'label'       => 'Get a post',
+			'description' => 'Fetch a single published post by ID.',
+			'category'    => 'content',
+		) );
+	} );
+} );
+```
+
+See [`docs/usage.md`](docs/usage.md) for the full registration guide.
+
+### As a WordPress plugin (recommended for site-wide use)
+
+Install and activate the adapter once; any plugin on the site can call
+`wp_register_ability_from_rest_route()`.
+
+Download the latest stable release from the
+[GitHub Releases page](https://github.com/galatanovidiu/abilities-rest-adapter/releases/latest)
+and install it like any other WordPress plugin. Release ZIPs include the
+bundled `vendor/` directory.
+
+#### With WP-CLI
+
+```bash
+wp plugin install https://github.com/galatanovidiu/abilities-rest-adapter/releases/latest/download/abilities-rest-adapter.zip --activate
+```
+
+#### From a git checkout
+
+```bash
+composer install --no-dev
+wp plugin activate abilities-rest-adapter
+```
+
 ## Development
 
 ```sh

@@ -4,8 +4,12 @@
 	"private": true,
 	"files": [
 		"abilities-rest-adapter.php",
+		"includes",
+		"vendor",
+		"LICENSE.md",
+		"README.md",
 		"readme.txt",
-		"includes"
+		"docs"
 	],
 	"repository": {
 		"type": "git",
