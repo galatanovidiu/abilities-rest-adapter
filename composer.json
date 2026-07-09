@@ -10,6 +10,16 @@
 		"ai"
 	],
 	"homepage": "https://github.com/galatanovidiu/abilities-rest-adapter",
+	"authors": [
+		{
+			"name": "Ovidiu Galatan",
+			"homepage": "https://github.com/galatanovidiu"
+		}
+	],
+	"support": {
+		"issues": "https://github.com/galatanovidiu/abilities-rest-adapter/issues",
+		"source": "https://github.com/galatanovidiu/abilities-rest-adapter"
+	},
 	"minimum-stability": "dev",
 	"prefer-stable": true,
 	"config": {
@@ -17,10 +27,20 @@
 			"php": "7.4"
 		},
 		"sort-packages": true,
+		"optimize-autoloader": true,
+		"preferred-install": "dist",
 		"allow-plugins": {
 			"dealerdirect/phpcodesniffer-composer-installer": true,
 			"phpstan/extension-installer": true
 		}
+	},
+	"autoload": {
+		"classmap": [
+			"includes/"
+		],
+		"files": [
+			"includes/api.php"
+		]
 	},
 	"autoload-dev": {
 		"psr-4": {

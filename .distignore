@@ -1,0 +1,42 @@
+# Files and directories excluded from the distributable plugin zip.
+# Consumed by `wp-scripts plugin-zip` (npm run plugin-zip).
+# Release ZIPs bundle vendor/ — run `composer install --no-dev` before zipping.
+
+# VCS and CI
+.git
+.github
+.gitignore
+.gitattributes
+
+# Agent / editor tooling
+.claude
+.hyper
+.idea
+.editorconfig
+
+# Dependencies (node only — vendor/ ships in release ZIPs)
+node_modules
+
+# Build / dev config
+.npmrc
+.nvmrc
+.prettierignore
+.prettierrc.js
+.phpcs.xml.dist
+phpstan.neon.dist
+phpunit.xml.dist
+package.json
+package-lock.json
+composer.json
+composer.lock
+.wp-env.json
+.wp-env.test.json
+.wp-env.override.json
+
+# Tests
+tests
+
+# OS cruft
+.DS_Store
+Thumbs.db
+*.log
