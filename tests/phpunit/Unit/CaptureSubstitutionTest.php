@@ -3,8 +3,8 @@
  * Path-capture substitution and per-capture encoding (G3).
  *
  * Covers four capture cases: a permissive capture round-trips raw, a numeric
- * capture is a no-op, a traversal attempt is encoded (fail closed), and the
- * balanced-paren scan survives nested groups. Reaches the protected engine
+ * capture is a no-op, a traversal attempt is refused as no-route (fail closed),
+ * and the balanced-paren scan survives nested groups. Reaches the protected engine
  * methods via reflection on a bare instance (the subclass skips the
  * execute/permission-callback requirement, so minimal args construct cleanly).
  *
@@ -90,9 +90,11 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 		$this->assertSame( '/wp/v2/posts/123', $path );
 	}
 
-	public function test_traversal_on_numeric_capture_is_encoded(): void {
-		list( $path ) = $this->substitute( self::NUM, array( 'id' => '12/3' ) );
-		$this->assertStringContainsString( '%2F', $path, 'fail closed: a value the capture forbids is encoded' );
+	public function test_traversal_on_numeric_capture_is_refused_as_no_route(): void {
+		$result = $this->substitute( self::NUM, array( 'id' => '12/3' ) );
+		$this->assertTrue( is_wp_error( $result ), 'a value the capture forbids does not route' );
+		$this->assertSame( 'rest_no_route', $result->get_error_code(), 'fail closed: no route matches an escaped path' );
+		$this->assertSame( 404, (int) $result->get_error_data()['status'] );
 	}
 
 	public function test_nested_paren_scan_keeps_trailing_segment(): void {
