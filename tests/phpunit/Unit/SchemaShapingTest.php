@@ -16,8 +16,8 @@ namespace GalatanOvidiu\AbilitiesRestAdapter\Tests\Unit;
 
 use GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability;
 use ReflectionMethod;
-use stdClass;
 use WP_UnitTestCase;
+use stdClass;
 
 /**
  * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability
@@ -27,7 +27,7 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 	/**
 	 * The engine instance reflection invokes against.
 	 *
-	 * @var Rest_Route_Ability
+	 * @var \GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability
 	 */
 	private $ability;
 
@@ -87,7 +87,10 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 			$this->detect_collection(
 				array(
 					'callback' => static function (): void {},
-					'args'     => array( 'per_page' => array(), 'page' => array() ),
+					'args'     => array(
+						'per_page' => array(),
+						'page'     => array(),
+					),
 				)
 			),
 			'pagination args alone do not force the collection envelope'
@@ -151,6 +154,40 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 
 		$this->assertArrayHasKey( 'writable', $clean['properties'] );
 		$this->assertArrayNotHasKey( 'computed', $clean['properties'] );
+	}
+
+	public function test_input_prunes_readonly_property_from_sibling_required(): void {
+		$clean = $this->clean(
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'id'   => array( 'readonly' => true ),
+					'name' => array( 'type' => 'string' ),
+				),
+				'required'   => array( 'id', 'name' ),
+			),
+			true
+		);
+
+		$this->assertArrayNotHasKey( 'id', $clean['properties'] );
+		$this->assertArrayHasKey( 'name', $clean['properties'] );
+		$this->assertSame( array( 'name' ), $clean['required'], 'the pruned readonly prop is gone from required' );
+	}
+
+	public function test_input_drops_required_when_only_prop_is_readonly(): void {
+		$clean = $this->clean(
+			array(
+				'type'       => 'object',
+				'properties' => array(
+					'id' => array( 'readonly' => true ),
+				),
+				'required'   => array( 'id' ),
+			),
+			true
+		);
+
+		$this->assertEquals( new stdClass(), $clean['properties'], 'the only prop was readonly, so properties empties to {}' );
+		$this->assertArrayNotHasKey( 'required', $clean, 'an emptied required is dropped entirely' );
 	}
 
 	public function test_empty_properties_normalizes_to_object(): void {
@@ -242,7 +279,14 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 
 	public function test_is_list_rejects_associative_and_non_arrays(): void {
 		$this->assertFalse( $this->is_list( array( 'a' => 1 ) ) );
-		$this->assertFalse( $this->is_list( array( 1 => 'a', 0 => 'b' ) ) );
+		$this->assertFalse(
+			$this->is_list(
+				array(
+					1 => 'a',
+					0 => 'b',
+				)
+			)
+		);
 		$this->assertFalse( $this->is_list( 'string' ) );
 		$this->assertFalse( $this->is_list( 5 ) );
 	}
