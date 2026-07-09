@@ -1,0 +1,16 @@
+name: Update Packagist
+
+on:
+  push:
+    branches: [trunk]
+    tags: ['*']
+
+jobs:
+  packagist:
+    runs-on: ubuntu-latest
+    name: Notify Packagist
+    steps:
+      - run: |
+          curl -s -X POST "https://packagist.org/api/update-package?username=galatanovidiu&apiToken=${{ secrets.PACKAGIST_TOKEN }}" \
+            -H 'Content-Type: application/json' \
+            -d '{"repository":{"url":"https://github.com/galatanovidiu/abilities-rest-adapter"}}'
