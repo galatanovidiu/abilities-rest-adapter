@@ -79,7 +79,34 @@ final class OutputCallbackTest extends AbilityTestCase {
 			);
 		};
 
-		$posts  = $this->register_ability( 'cb/posts', array( 'route' => '/wp/v2/posts', 'method' => 'GET', 'output_callback' => $callback ) );
+		$posts  = $this->register_ability(
+			'cb/posts',
+			array(
+				'route'           => '/wp/v2/posts',
+				'method'          => 'GET',
+				'output_callback' => $callback,
+				'output_schema'   => array(
+					'type'                 => 'object',
+					'properties'           => array(
+						'items' => array(
+							'type'  => 'array',
+							'items' => array(
+								'type'                 => 'object',
+								'properties'           => array(
+									'id'    => array( 'type' => 'integer' ),
+									'title' => array( 'type' => 'string' ),
+								),
+								'required'             => array( 'id', 'title' ),
+								'additionalProperties' => false,
+							),
+						),
+						'total' => array( 'type' => 'integer' ),
+					),
+					'required'             => array( 'items', 'total' ),
+					'additionalProperties' => false,
+				),
+			)
+		);
 		$result = $posts->execute( array() );
 
 		$this->assertIsArray( $result );
@@ -98,7 +125,18 @@ final class OutputCallbackTest extends AbilityTestCase {
 			return new \WP_Error( 'demo_rejected', 'Rejected by callback.', array( 'status' => 422 ) );
 		};
 
-		$me     = $this->register_ability( 'cb/reject', array( 'route' => '/wp/v2/users/me', 'method' => 'GET', 'output_callback' => $callback ) );
+		$me     = $this->register_ability(
+			'cb/reject',
+			array(
+				'route'           => '/wp/v2/users/me',
+				'method'          => 'GET',
+				'output_callback' => $callback,
+				'output_schema'   => array(
+					'type'                 => 'object',
+					'additionalProperties' => false,
+				),
+			)
+		);
 		$result = $me->execute( array() );
 
 		$this->assertTrue( is_wp_error( $result ) );
@@ -115,7 +153,18 @@ final class OutputCallbackTest extends AbilityTestCase {
 			return $data;
 		};
 
-		$boom   = $this->register_ability( 'cb/boom', array( 'route' => '/arat-test/v1/boom', 'method' => 'GET', 'output_callback' => $callback ) );
+		$boom   = $this->register_ability(
+			'cb/boom',
+			array(
+				'route'           => '/arat-test/v1/boom',
+				'method'          => 'GET',
+				'output_callback' => $callback,
+				'output_schema'   => array(
+					'type'                 => 'object',
+					'additionalProperties' => false,
+				),
+			)
+		);
 		$result = $boom->execute( array() );
 
 		$this->assertTrue( is_wp_error( $result ) );
@@ -184,22 +233,18 @@ final class OutputCallbackTest extends AbilityTestCase {
 	}
 
 	/**
-	 * With an output_callback and no output_schema, no schema is advertised and
-	 * output validation is skipped (so a reshape the route schema would reject passes).
+	 * A reshaping output callback without an output schema fails registration.
 	 */
-	public function test_output_callback_without_schema_skips_validation(): void {
-		// This reshape (a bare-string field) would fail the route's derived item schema;
-		// it must pass because no output schema is advertised.
+	public function test_output_callback_without_schema_fails_registration(): void {
+		$this->setExpectedIncorrectUsage( 'wp_register_ability_from_rest_route' );
+
 		$callback = static function ( $data, $input, $response ) {
 			return array( 'summary' => 'a plain string, not the user object' );
 		};
 
 		$me = $this->register_ability( 'cb/no-schema', array( 'route' => '/wp/v2/users/me', 'method' => 'GET', 'output_callback' => $callback ) );
 
-		$this->assertSame( array(), $me->get_output_schema(), 'no output schema is advertised when a callback reshapes' );
-
-		$result = $me->execute( array() );
-		$this->assertSame( array( 'summary' => 'a plain string, not the user object' ), $result, 'reshape passed through unvalidated' );
+		$this->assertNull( $me, 'a reshaped output without a declared contract is not registered' );
 	}
 
 	/**

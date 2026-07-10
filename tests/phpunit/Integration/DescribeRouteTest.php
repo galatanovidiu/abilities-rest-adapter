@@ -62,7 +62,7 @@ final class DescribeRouteTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * A non-numeric path capture is reported as a string (guards is_numeric_subpattern()).
+	 * A non-numeric path capture is reported as a string.
 	 */
 	public function test_describes_string_capture(): void {
 		$info = Rest_Route_Ability::describe( '/wp/v2/types/(?P<type>[\w-]+)', 'GET' );

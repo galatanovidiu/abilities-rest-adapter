@@ -132,4 +132,21 @@ final class ReadEquivalenceTest extends AbilityTestCase {
 
 		$this->assertStringNotContainsString( '"properties":[]', (string) $encoded );
 	}
+
+	/**
+	 * Nested edit-only fields are not advertised by the default view schema.
+	 */
+	public function test_view_output_schema_filters_nested_context_fields(): void {
+		$post   = $this->register_ability( 'probe/post-view-schema', array( 'route' => '/wp/v2/posts/(?P<id>[\d]+)', 'method' => 'GET' ) );
+		$schema = $post->get_output_schema();
+		$result = $post->execute( array( 'id' => $this->post_id ) );
+
+		$this->assertFalse( is_wp_error( $result ) );
+		$this->assertSame( array( 'rendered', 'protected' ), array_keys( $result['content'] ), 'the route returns only view-context content fields' );
+		$this->assertSame(
+			array( 'rendered', 'protected' ),
+			array_keys( $schema['properties']['content']['properties'] ),
+			'the derived schema advertises the same nested view-context fields'
+		);
+	}
 }

@@ -25,7 +25,7 @@ The signature mirrors core's `wp_register_ability( $name, $args )`. `route`, `me
   - `output_callback( $data, array $input, WP_REST_Response $response ): mixed|WP_Error` — reshape a successful response (or reject it).
   - `input_schema` / `output_schema` — replace the schemas the adapter derives from the route.
   - `require_permission( mixed $input ): bool|WP_Error` — an opt-in floor checked before the route's own permission; it can only tighten access, never widen it.
-- **Safety annotations (writes).** A write (any non-GET) must declare `destructive` and `idempotent` under `meta.annotations`; `readonly` is always derived from the method. Omitting them still registers but warns and leaves them unset (unknown, never a false "safe").
+- **Safety annotations.** Every non-readonly operation must declare boolean `destructive` and `idempotent` values under `meta.annotations`; invalid or incomplete safety metadata fails registration. Readonly GETs receive the coherent read tuple automatically.
 - **Standalone now, core later.** Built as a feature plugin; designed so it can move into core.
 - **Status:** behavioral-equivalence + regression suite green on PHP 7.4–8.5.
 

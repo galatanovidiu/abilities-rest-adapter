@@ -3,7 +3,7 @@
  * Schema-cleaning and list-detection logic (G5 internals).
  *
  * Pins `clean_schema_node()` (strip REST-internal keys, drop `readonly` and
- * read-only nested props for input, normalize empty `properties` to `{}`) and
+ * read-only nested props for input, omit empty schema maps) and
  * `is_list()` (only a true JSON list gets the collection envelope). Reaches the
  * protected methods via reflection on a bare instance.
  *
@@ -17,7 +17,6 @@ namespace GalatanOvidiu\AbilitiesRestAdapter\Tests\Unit;
 use GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability;
 use ReflectionMethod;
 use WP_UnitTestCase;
-use stdClass;
 
 /**
  * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability
@@ -200,11 +199,11 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 			true
 		);
 
-		$this->assertEquals( new stdClass(), $clean['properties'], 'the only prop was readonly, so properties empties to {}' );
+		$this->assertArrayNotHasKey( 'properties', $clean, 'an emptied properties map is omitted' );
 		$this->assertArrayNotHasKey( 'required', $clean, 'an emptied required is dropped entirely' );
 	}
 
-	public function test_empty_properties_normalizes_to_object(): void {
+	public function test_empty_properties_is_omitted(): void {
 		$clean = $this->clean(
 			array(
 				'type'       => 'object',
@@ -213,11 +212,11 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 			false
 		);
 
-		$this->assertInstanceOf( stdClass::class, $clean['properties'], 'empty properties become {} not []' );
-		$this->assertSame( '{"type":"object","properties":{}}', wp_json_encode( $clean ) );
+		$this->assertArrayNotHasKey( 'properties', $clean );
+		$this->assertSame( '{"type":"object"}', wp_json_encode( $clean ) );
 	}
 
-	public function test_empty_object_keywords_normalize_to_object(): void {
+	public function test_empty_schema_map_keywords_are_omitted(): void {
 		$clean = $this->clean(
 			array(
 				'type'                 => 'object',
@@ -228,9 +227,9 @@ final class SchemaShapingTest extends WP_UnitTestCase {
 			false
 		);
 
-		$this->assertInstanceOf( stdClass::class, $clean['additionalProperties'], 'emptied additionalProperties becomes {}' );
-		$this->assertInstanceOf( stdClass::class, $clean['patternProperties'], 'empty patternProperties becomes {}' );
-		$this->assertInstanceOf( stdClass::class, $clean['items'], 'emptied items becomes {}' );
+		$this->assertArrayNotHasKey( 'additionalProperties', $clean );
+		$this->assertArrayNotHasKey( 'patternProperties', $clean );
+		$this->assertArrayNotHasKey( 'items', $clean );
 	}
 
 	public function test_boolean_additional_properties_is_left_untouched(): void {

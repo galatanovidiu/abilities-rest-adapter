@@ -84,7 +84,7 @@ WP_CLI::add_command(
 		WP_CLI::log( '' );
 		WP_CLI::log( 'Output schema:' );
 		$output_schema = empty( $info['output_schema'] )
-			? '(none advertised — an output_callback is in play, or the route exposes no item schema)'
+			? '(none advertised — the route exposes no item schema)'
 			: (string) wp_json_encode( $info['output_schema'], JSON_PRETTY_PRINT );
 		WP_CLI::log( $output_schema );
 	},
