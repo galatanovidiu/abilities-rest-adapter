@@ -4,9 +4,8 @@
  *
  * Covers four capture cases: a permissive capture round-trips raw, a numeric
  * capture is a no-op, a traversal attempt is refused as no-route (fail closed),
- * and the balanced-paren scan survives nested groups. Reaches the protected engine
- * methods via reflection on a bare instance (the subclass skips the
- * execute/permission-callback requirement, so minimal args construct cleanly).
+ * and the balanced-paren scan survives nested groups. Exercises the route-pattern
+ * module through its public substitution and capture-inspection interface.
  *
  * @package AbilitiesRestAdapter\Tests
  */
@@ -15,12 +14,11 @@ declare(strict_types=1);
 
 namespace GalatanOvidiu\AbilitiesRestAdapter\Tests\Unit;
 
-use GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability;
-use ReflectionMethod;
+use GalatanOvidiu\AbilitiesRestAdapter\Route_Pattern;
 use WP_UnitTestCase;
 
 /**
- * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\Rest_Route_Ability
+ * @coversDefaultClass \GalatanOvidiu\AbilitiesRestAdapter\Route_Pattern
  */
 final class CaptureSubstitutionTest extends WP_UnitTestCase {
 
@@ -31,67 +29,22 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 	private const NUM = '/wp/v2/posts/(?P<id>[\d]+)';
 
 	/**
-	 * The engine instance reflection invokes against.
-	 *
-	 * @var Rest_Route_Ability
-	 */
-	private $ability;
-
-	public function set_up(): void {
-		parent::set_up();
-		$this->ability = new Rest_Route_Ability(
-			'probe/g3',
-			array(
-				'label'       => 'G3',
-				'description' => 'G3 probe.',
-				'category'    => 'rest',
-			)
-		);
-	}
-
-	/**
-	 * Builds a reflection handle for a non-public method under test.
-	 *
-	 * setAccessible() is required before PHP 8.1 to invoke a non-public method;
-	 * it is a no-op on 8.1+ and deprecated on 8.5, so it is only called where it
-	 * is still needed.
-	 *
-	 * @param string $name The method name on Rest_Route_Ability.
-	 */
-	private function accessible_method( string $name ): ReflectionMethod {
-		$method = new ReflectionMethod( Rest_Route_Ability::class, $name );
-		if ( PHP_VERSION_ID < 80100 ) {
-			$method->setAccessible( true );
-		}
-		return $method;
-	}
-
-	/**
-	 * Invokes the protected substitute_captures().
+	 * Substitutes captures through the route-pattern interface.
 	 *
 	 * @param string               $route The route regex.
 	 * @param array<string, mixed> $input The ability input.
 	 * @return array{0: string, 1: string[]}|\WP_Error
 	 */
 	private function substitute( string $route, array $input ) {
-		$method = $this->accessible_method( 'substitute_captures' );
-		return $method->invoke( $this->ability, $route, $input );
+		return ( new Route_Pattern( $route ) )->substitute( $input );
 	}
 
 	/**
-	 * Invokes the protected encode_capture().
+	 * Returns the derived ability type for one capture sub-pattern.
 	 */
-	private function encode( string $value, string $subpattern ): string {
-		$method = $this->accessible_method( 'encode_capture' );
-		return $method->invoke( $this->ability, $value, $subpattern );
-	}
-
-	/**
-	 * Invokes the protected is_numeric_subpattern().
-	 */
-	private function is_numeric( string $subpattern ): bool {
-		$method = $this->accessible_method( 'is_numeric_subpattern' );
-		return $method->invoke( $this->ability, $subpattern );
+	private function capture_type( string $subpattern ): string {
+		$captures = ( new Route_Pattern( '/probe/(?P<value>' . $subpattern . ')' ) )->captures();
+		return $captures['value']['type'];
 	}
 
 	public function test_permissive_capture_round_trips_raw(): void {
@@ -125,27 +78,18 @@ final class CaptureSubstitutionTest extends WP_UnitTestCase {
 		$this->assertSame( '/wp/v2/x/abc', $path, 'the leading ] and embedded ) stay inside the class' );
 	}
 
-	public function test_encode_capture_leaves_matching_value_raw(): void {
-		$this->assertSame( 'abc', $this->encode( 'abc', '[a-z]+' ) );
-		$this->assertSame( '123', $this->encode( '123', '[\d]+' ) );
+	public function test_capture_types_distinguish_numeric_patterns(): void {
+		$this->assertSame( 'integer', $this->capture_type( '[\d]+' ) );
+		$this->assertSame( 'integer', $this->capture_type( '\d' ) );
+		$this->assertSame( 'integer', $this->capture_type( '[0-9]' ) );
+		$this->assertSame( 'string', $this->capture_type( '[a-z]+' ) );
+		$this->assertSame( 'string', $this->capture_type( '[^/]+' ) );
 	}
 
-	public function test_encode_capture_escapes_a_value_the_pattern_forbids(): void {
-		$this->assertSame( 'a%2Fb', $this->encode( 'a/b', '[a-z]+' ) );
-	}
-
-	public function test_is_numeric_subpattern_classifies_capture(): void {
-		$this->assertTrue( $this->is_numeric( '[\d]+' ) );
-		$this->assertTrue( $this->is_numeric( '\d' ) );
-		$this->assertTrue( $this->is_numeric( '[0-9]' ) );
-		$this->assertFalse( $this->is_numeric( '[a-z]+' ) );
-		$this->assertFalse( $this->is_numeric( '[^/]+' ) );
-	}
-
-	public function test_is_numeric_subpattern_recognizes_brace_quantifiers(): void {
-		$this->assertTrue( $this->is_numeric( '\d{1,}' ) );
-		$this->assertTrue( $this->is_numeric( '[\d]{1,6}' ) );
-		$this->assertTrue( $this->is_numeric( '[0-9]{4}' ) );
-		$this->assertFalse( $this->is_numeric( '[a-z]{1,6}' ), 'a brace quantifier does not make a non-numeric class numeric' );
+	public function test_capture_types_recognize_numeric_brace_quantifiers(): void {
+		$this->assertSame( 'integer', $this->capture_type( '\d{1,}' ) );
+		$this->assertSame( 'integer', $this->capture_type( '[\d]{1,6}' ) );
+		$this->assertSame( 'integer', $this->capture_type( '[0-9]{4}' ) );
+		$this->assertSame( 'string', $this->capture_type( '[a-z]{1,6}' ), 'a brace quantifier does not make a non-numeric class numeric' );
 	}
 }

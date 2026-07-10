@@ -130,6 +130,14 @@ class Rest_Route_Ability extends WP_Ability {
 	protected string $resolved_route_key = '';
 
 	/**
+	 * Parsed representation of the resolved route regex.
+	 *
+	 * @since 0.1.2
+	 * @var \GalatanOvidiu\AbilitiesRestAdapter\Route_Pattern|null
+	 */
+	protected ?Route_Pattern $route_pattern = null;
+
+	/**
 	 * Whether the wrapped route is a paginated collection (drives the output envelope).
 	 *
 	 * @since 0.1.0
@@ -149,39 +157,132 @@ class Rest_Route_Ability extends WP_Ability {
 	 * `readonly` unless the developer explicitly passes `readonly => false` (a GET
 	 * with side effects), and a write is always marked not-readonly. A read-only GET
 	 * is also filled with `destructive => false` and `idempotent => true` (a read is
-	 * both by definition), so its annotations are complete. A write that omits
-	 * `destructive`/`idempotent` still registers but triggers `_doing_it_wrong` and
-	 * leaves them unset (`null` = "unknown", which a consumer treats as ask-first —
-	 * never a false "safe").
+	 * both by definition), so its annotations are complete. Every non-readonly
+	 * operation must declare boolean `destructive` and `idempotent` values; missing,
+	 * non-boolean, or contradictory safety metadata fails registration.
 	 *
 	 * @since 0.1.0
 	 *
 	 * @param string               $name The ability name (`namespace/slug`).
 	 * @param array<string, mixed> $args The developer's registration args (see
 	 *                                   {@see wp_register_ability_from_rest_route()}).
-	 * @return array<string, mixed> Args ready for `wp_register_ability()`.
+	 * @return array<string, mixed> Args ready for `wp_register_ability()`, or an empty array when registration metadata is invalid.
 	 */
 	public static function build_args( string $name, array $args ): array {
 		$route   = isset( $args['route'] ) && is_string( $args['route'] ) ? $args['route'] : '';
 		$method  = isset( $args['method'] ) && is_string( $args['method'] ) ? strtoupper( trim( $args['method'] ) ) : 'GET';
 		$is_read = ( 'GET' === $method );
 
-		$annotations = array();
-		if ( isset( $args['meta']['annotations'] ) && is_array( $args['meta']['annotations'] ) ) {
-			$annotations = $args['meta']['annotations'];
-		}
-
-		if ( ! $is_read && ( ! array_key_exists( 'destructive', $annotations ) || ! array_key_exists( 'idempotent', $annotations ) ) ) {
+		if ( ! in_array( $method, array( 'GET', 'POST', 'PUT', 'PATCH', 'DELETE' ), true ) ) {
 			_doing_it_wrong(
 				'wp_register_ability_from_rest_route',
 				sprintf(
 					/* translators: 1: HTTP method, 2: ability name. */
-					esc_html__( 'The %1$s write ability "%2$s" should declare both `destructive` and `idempotent` annotations under meta.annotations. They were left unset; consumers will treat the ability as unsafe until you declare them.', 'abilities-rest-adapter' ),
+					esc_html__( 'The HTTP method "%1$s" for ability "%2$s" is unsupported; use GET, POST, PUT, PATCH, or DELETE.', 'abilities-rest-adapter' ),
 					esc_html( $method ),
 					esc_html( $name )
 				),
 				'0.1.0'
 			);
+			return array();
+		}
+
+		if ( isset( $args['meta'] ) && ! is_array( $args['meta'] ) ) {
+			_doing_it_wrong(
+				'wp_register_ability_from_rest_route',
+				sprintf(
+					/* translators: %s: ability name. */
+					esc_html__( 'The `meta` value for ability "%s" must be an array.', 'abilities-rest-adapter' ),
+					esc_html( $name )
+				),
+				'0.1.0'
+			);
+			return array();
+		}
+
+		if ( isset( $args['meta']['annotations'] ) && ! is_array( $args['meta']['annotations'] ) ) {
+			_doing_it_wrong(
+				'wp_register_ability_from_rest_route',
+				sprintf(
+					/* translators: %s: ability name. */
+					esc_html__( 'The `meta.annotations` value for ability "%s" must be an array.', 'abilities-rest-adapter' ),
+					esc_html( $name )
+				),
+				'0.1.0'
+			);
+			return array();
+		}
+
+		$annotations = array();
+		if ( isset( $args['meta']['annotations'] ) && is_array( $args['meta']['annotations'] ) ) {
+			$annotations = $args['meta']['annotations'];
+		}
+
+		if ( array_key_exists( 'readonly', $annotations ) && ! is_bool( $annotations['readonly'] ) ) {
+			_doing_it_wrong(
+				'wp_register_ability_from_rest_route',
+				sprintf(
+					/* translators: %s: ability name. */
+					esc_html__( 'The `readonly` annotation for ability "%s" must be a boolean.', 'abilities-rest-adapter' ),
+					esc_html( $name )
+				),
+				'0.1.0'
+			);
+			return array();
+		}
+
+		$has_write_annotations = array_key_exists( 'destructive', $annotations )
+			&& is_bool( $annotations['destructive'] )
+			&& array_key_exists( 'idempotent', $annotations )
+			&& is_bool( $annotations['idempotent'] );
+		$is_readonly           = $is_read
+			&& ! ( array_key_exists( 'readonly', $annotations ) && false === $annotations['readonly'] );
+
+		if ( ! $is_readonly && ! $has_write_annotations ) {
+			_doing_it_wrong(
+				'wp_register_ability_from_rest_route',
+				sprintf(
+					/* translators: 1: HTTP method, 2: ability name. */
+					esc_html__( 'The non-readonly %1$s ability "%2$s" must declare both `destructive` and `idempotent` as boolean annotations under meta.annotations.', 'abilities-rest-adapter' ),
+					esc_html( $method ),
+					esc_html( $name )
+				),
+				'0.1.0'
+			);
+			return array();
+		}
+
+		$has_invalid_read_annotations = $is_readonly
+			&& (
+				( array_key_exists( 'destructive', $annotations ) && false !== $annotations['destructive'] )
+				|| ( array_key_exists( 'idempotent', $annotations ) && true !== $annotations['idempotent'] )
+			);
+		if ( $has_invalid_read_annotations ) {
+			_doing_it_wrong(
+				'wp_register_ability_from_rest_route',
+				sprintf(
+					/* translators: %s: ability name. */
+					esc_html__( 'The readonly ability "%s" must use `destructive => false` and `idempotent => true` annotations.', 'abilities-rest-adapter' ),
+					esc_html( $name )
+				),
+				'0.1.0'
+			);
+			return array();
+		}
+
+		$has_output_callback = isset( $args['output_callback'] ) && is_callable( $args['output_callback'] );
+		$has_output_schema   = isset( $args['output_schema'] ) && is_array( $args['output_schema'] ) && ! empty( $args['output_schema'] );
+		if ( $has_output_callback && ! $has_output_schema ) {
+			_doing_it_wrong(
+				'wp_register_ability_from_rest_route',
+				sprintf(
+					/* translators: %s: ability name. */
+					esc_html__( 'Ability "%s" must declare a non-empty `output_schema` when using an `output_callback`.', 'abilities-rest-adapter' ),
+					esc_html( $name )
+				),
+				'0.1.0'
+			);
+			return array();
 		}
 
 		// A supplied callback must be callable and a supplied schema must be an array;
@@ -211,12 +312,7 @@ class Rest_Route_Ability extends WP_Ability {
 		// oembed proxy, a view counter, a cache regen) may pass `readonly => false` to flag
 		// it as not-free-to-call; honor that explicit opt-out, otherwise force `true`. Only
 		// `destructive`/`idempotent` are otherwise the developer's to declare.
-		if ( ! $is_read ) {
-			$annotations['readonly'] = false;
-		} else {
-			$opted_out               = array_key_exists( 'readonly', $annotations ) && false === $annotations['readonly'];
-			$annotations['readonly'] = ! $opted_out;
-		}
+		$annotations['readonly'] = $is_readonly;
 
 		// A genuine read is non-destructive and idempotent by definition, so fill both
 		// when the ability ends up read-only. This keeps the registered annotations
@@ -293,9 +389,8 @@ class Rest_Route_Ability extends WP_Ability {
 	 *
 	 * When `found` is false the route did not resolve: `error` carries the reason,
 	 * and `is_collection`/`readonly`/`captures`/`input_schema`/`output_schema` are
-	 * placeholders, not derived values. `output_schema` is an empty array whenever
-	 * no output schema is advertised — a not-found route, an `output_callback` with
-	 * no `output_schema`, or a route that exposes no item schema.
+	 * placeholders, not derived values. `output_schema` is an empty array for a
+	 * not-found route or a route that exposes no item schema.
 	 *
 	 * @since 0.1.0
 	 *
@@ -344,9 +439,9 @@ class Rest_Route_Ability extends WP_Ability {
 		$error         = null !== $resolve_error ? $resolve_error->get_error_message() : null;
 
 		$captures = array();
-		if ( $found ) {
-			foreach ( $ability->capture_specs( $ability->resolved_route_key ) as $name => $subpattern ) {
-				$captures[ $name ] = $ability->is_numeric_subpattern( $subpattern ) ? 'integer' : 'string';
+		if ( $found && null !== $ability->route_pattern ) {
+			foreach ( $ability->route_pattern->captures() as $name => $capture ) {
+				$captures[ $name ] = $capture['type'];
 			}
 		}
 
@@ -534,7 +629,6 @@ class Rest_Route_Ability extends WP_Ability {
 			);
 			$this->input_schema  = array(
 				'type'                 => 'object',
-				'properties'           => new stdClass(),
 				'additionalProperties' => true,
 			);
 			$this->output_schema = array();
@@ -543,24 +637,18 @@ class Rest_Route_Ability extends WP_Ability {
 
 		$this->resolve_error                               = null;
 		[ $this->resolved_route_key, $this->rest_handler ] = $handler;
+		$this->route_pattern                               = new Route_Pattern( $this->resolved_route_key );
 		$this->is_collection                               = $this->detect_collection( $this->rest_handler );
 
 		// Input schema: a developer-supplied schema wins, else derive from the route.
 		$input_override     = $this->arg_schema( 'input_schema' );
 		$this->input_schema = null !== $input_override ? $input_override : $this->derive_input_schema( $this->rest_handler );
 
-		// Output schema: a developer-supplied schema wins. Otherwise, if an output
-		// callback will reshape the body, the derived schema would be a lie — advertise
-		// none so core skips output validation (the developer can pass `output_schema`
-		// to opt back into a true, validated schema). Else derive from the route.
-		$output_override = $this->arg_schema( 'output_schema' );
-		if ( null !== $output_override ) {
-			$this->output_schema = $output_override;
-		} elseif ( $this->has_output_callback() ) {
-			$this->output_schema = array();
-		} else {
-			$this->output_schema = $this->derive_output_schema( $this->rest_handler );
-		}
+		// Output schema: a developer-supplied schema wins; otherwise derive from the
+		// route. Registration requires an explicit non-empty schema for every callable
+		// output callback, so a reshaped result can never reach this fallback.
+		$output_override     = $this->arg_schema( 'output_schema' );
+		$this->output_schema = null !== $output_override ? $output_override : $this->derive_output_schema( $this->rest_handler );
 
 		$this->resolved = true;
 	}
@@ -573,12 +661,9 @@ class Rest_Route_Ability extends WP_Ability {
 	 * against the `get_routes()` keys and picks the handler whose `methods`
 	 * include the configured method.
 	 *
-	 * Caveat: this matches the exact registered route pattern. For overlapping
-	 * patterns — where a substituted path could also match a different,
-	 * earlier-registered route — the permission check and dispatch resolve the
-	 * handler independently; {@see encode_capture()} keeps a value that does not fit
-	 * its own capture from traversing, but a value that fits a permissive capture
-	 * and a sibling route is not re-checked. Core routes do not overlap this way.
+	 * This resolves the exact registered route pattern. After capture substitution,
+	 * {@see check_route_identity()} separately confirms that WordPress's ordered
+	 * matcher still selects this route before any permission callback is invoked.
 	 *
 	 * @since 0.1.0
 	 *
@@ -643,8 +728,8 @@ class Rest_Route_Ability extends WP_Ability {
 	 * sub-patterns, else `string`). Non-portable keys (`sanitize_callback`,
 	 * `validate_callback`, `arg_options`, `context`, `readonly`) and closures are
 	 * stripped — the route re-applies them at dispatch. The schema is closed
-	 * (`additionalProperties: false`) and normalized (empty `properties` becomes
-	 * an object, empty `required` is dropped).
+	 * (`additionalProperties: false`) and normalized (empty `properties` and
+	 * `required` keywords are omitted).
 	 *
 	 * @since 0.1.0
 	 *
@@ -669,10 +754,11 @@ class Rest_Route_Ability extends WP_Ability {
 			$required[] = $name;
 		}
 
-		foreach ( $this->capture_specs( $this->resolved_route_key ) as $name => $subpattern ) {
+		$route_captures = null !== $this->route_pattern ? $this->route_pattern->captures() : array();
+		foreach ( $route_captures as $name => $capture ) {
 			if ( ! isset( $properties[ $name ] ) ) {
 				$properties[ $name ] = array(
-					'type'        => $this->is_numeric_subpattern( $subpattern ) ? 'integer' : 'string',
+					'type'        => $capture['type'],
 					'description' => sprintf(
 						/* translators: %s: path parameter name. */
 						__( 'The "%s" path parameter.', 'abilities-rest-adapter' ),
@@ -685,9 +771,11 @@ class Rest_Route_Ability extends WP_Ability {
 
 		$schema = array(
 			'type'                 => 'object',
-			'properties'           => empty( $properties ) ? new stdClass() : $properties,
 			'additionalProperties' => false,
 		);
+		if ( ! empty( $properties ) ) {
+			$schema['properties'] = $properties;
+		}
 
 		$required = array_values( array_unique( $required ) );
 		if ( ! empty( $required ) ) {
@@ -735,17 +823,29 @@ class Rest_Route_Ability extends WP_Ability {
 
 		$kept = array();
 		foreach ( $item_props as $name => $prop ) {
-			if ( is_array( $prop ) && isset( $prop['context'] ) && is_array( $prop['context'] ) && ! in_array( $context, $prop['context'], true ) ) {
+			$prop = $prop instanceof stdClass ? (array) $prop : $prop;
+			if ( ! is_array( $prop ) ) {
 				continue;
 			}
-			$kept[ $name ] = $this->clean_schema_node( $prop, false );
+			if ( isset( $prop['context'] ) && is_array( $prop['context'] ) && ! in_array( $context, $prop['context'], true ) ) {
+				continue;
+			}
+
+			$clean = $this->clean_schema_node( $prop, false, $context );
+			if ( empty( $clean ) ) {
+				continue;
+			}
+
+			$kept[ $name ] = $clean;
 		}
 
 		$item_schema = array(
 			'type'                 => 'object',
-			'properties'           => empty( $kept ) ? new stdClass() : $kept,
 			'additionalProperties' => true,
 		);
+		if ( ! empty( $kept ) ) {
+			$item_schema['properties'] = $kept;
+		}
 
 		if ( $this->is_collection ) {
 			return array(
@@ -778,22 +878,22 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @return array<string, mixed> The item schema's `properties`, or empty array.
 	 */
 	protected function item_schema_properties( array $handler ): array {
-		if ( isset( $handler['schema'] ) && is_callable( $handler['schema'] ) ) {
-			$schema = call_user_func( $handler['schema'] );
-			if ( isset( $schema['properties'] ) && is_array( $schema['properties'] ) ) {
+		if ( isset( $handler['schema'] ) ) {
+			$schema = is_callable( $handler['schema'] )
+				? call_user_func( $handler['schema'] )
+				: $handler['schema'];
+			$schema = $schema instanceof stdClass ? (array) $schema : $schema;
+			if ( is_array( $schema ) && isset( $schema['properties'] ) && is_array( $schema['properties'] ) ) {
 				return $schema['properties'];
 			}
 		}
 
-		if ( isset( $handler['schema']['properties'] ) && is_array( $handler['schema']['properties'] ) ) {
-			return $handler['schema']['properties'];
-		}
-
-		if ( isset( $handler['callback'] ) && is_array( $handler['callback'] ) ) {
+		if ( isset( $handler['callback'] ) && is_array( $handler['callback'] ) && isset( $handler['callback'][0] ) ) {
 			$controller = $handler['callback'][0];
 			if ( is_object( $controller ) && method_exists( $controller, 'get_item_schema' ) ) {
 				$schema = $controller->get_item_schema();
-				if ( isset( $schema['properties'] ) && is_array( $schema['properties'] ) ) {
+				$schema = $schema instanceof stdClass ? (array) $schema : $schema;
+				if ( is_array( $schema ) && isset( $schema['properties'] ) && is_array( $schema['properties'] ) ) {
 					return $schema['properties'];
 				}
 			}
@@ -808,17 +908,18 @@ class Rest_Route_Ability extends WP_Ability {
 	 * Always removes REST-internal keys (`sanitize_callback`, `validate_callback`,
 	 * `arg_options`, `context`) and any closure/non-array-object values so the
 	 * schema is JSON-serializable. For input nodes, also removes `readonly` and
-	 * prunes read-only nested properties (at every depth). Empty `properties`
-	 * objects are normalized to `{}` so strict JSON Schema validators do not see
-	 * the PHP array `[]`.
+	 * prunes read-only nested properties (at every depth). Empty schema-map
+	 * keywords are omitted: this serializes portably and keeps WordPress's PHP
+	 * validator from receiving a non-array `stdClass` schema map.
 	 *
 	 * @since 0.1.0
 	 *
-	 * @param mixed $node           The schema node (array, object, or scalar).
-	 * @param bool  $strip_readonly Whether to drop `readonly` and read-only nested properties (input only).
+	 * @param mixed       $node           The schema node (array, object, or scalar).
+	 * @param bool        $strip_readonly Whether to drop `readonly` and read-only nested properties (input only).
+	 * @param string|null $output_context Optional output context used to prune nested properties.
 	 * @return array<string, mixed> The cleaned node, or an empty array if the node is not a usable schema.
 	 */
-	protected function clean_schema_node( $node, bool $strip_readonly ): array {
+	protected function clean_schema_node( $node, bool $strip_readonly, ?string $output_context = null ): array {
 		if ( $node instanceof stdClass ) {
 			$node = (array) $node;
 		}
@@ -826,30 +927,39 @@ class Rest_Route_Ability extends WP_Ability {
 			return array();
 		}
 
-		// Prune read-only child properties from the RAW node first — the recursion
-		// below strips the `readonly` markers this decision depends on.
-		if ( $strip_readonly && isset( $node['properties'] ) && is_array( $node['properties'] ) ) {
-			foreach ( $node['properties'] as $prop_name => $prop_schema ) {
+		// Prune child properties from the RAW node first: recursion below strips the
+		// `readonly` and `context` markers these decisions depend on.
+		$raw_properties = $node['properties'] ?? null;
+		if ( $raw_properties instanceof stdClass ) {
+			$raw_properties = (array) $raw_properties;
+		}
+		if ( is_array( $raw_properties ) && ( $strip_readonly || null !== $output_context ) ) {
+			$removed_properties = array();
+			foreach ( $raw_properties as $prop_name => $prop_schema ) {
 				$prop_array = $prop_schema instanceof stdClass ? (array) $prop_schema : $prop_schema;
-				if ( ! is_array( $prop_array ) || empty( $prop_array['readonly'] ) ) {
+				if ( ! is_array( $prop_array ) ) {
 					continue;
 				}
 
-				unset( $node['properties'][ $prop_name ] );
-
-				// Drop the just-removed property from any sibling `required` list, else the
-				// schema would require a field it no longer has. An emptied `required` is
-				// dropped entirely (matches derive_input_schema()'s convention).
-				if ( ! isset( $node['required'] ) || ! is_array( $node['required'] ) ) {
+				$remove_readonly = $strip_readonly && ! empty( $prop_array['readonly'] );
+				$remove_context  = null !== $output_context
+					&& isset( $prop_array['context'] )
+					&& is_array( $prop_array['context'] )
+					&& ! in_array( $output_context, $prop_array['context'], true );
+				if ( ! $remove_readonly && ! $remove_context ) {
 					continue;
 				}
 
-				$node['required'] = array_values( array_diff( $node['required'], array( $prop_name ) ) );
-				if ( ! empty( $node['required'] ) ) {
-					continue;
-				}
+				unset( $raw_properties[ $prop_name ] );
+				$removed_properties[] = $prop_name;
+			}
 
-				unset( $node['required'] );
+			$node['properties'] = $raw_properties;
+			if ( ! empty( $removed_properties ) && isset( $node['required'] ) && is_array( $node['required'] ) ) {
+				$node['required'] = array_values( array_diff( $node['required'], $removed_properties ) );
+				if ( empty( $node['required'] ) ) {
+					unset( $node['required'] );
+				}
 			}
 		}
 
@@ -863,29 +973,85 @@ class Rest_Route_Ability extends WP_Ability {
 			if ( in_array( $key, $strip, true ) ) {
 				continue;
 			}
-			if ( $value instanceof stdClass ) {
-				$value = (array) $value;
-			}
-			if ( $value instanceof Closure || is_object( $value ) ) {
+
+			// A schema map is not itself a schema node: its keys are caller-defined
+			// names and must never be compared with the schema-keyword strip list.
+			if ( in_array( $key, array( 'properties', 'patternProperties', 'definitions', '$defs', 'dependentSchemas' ), true ) ) {
+				if ( $value instanceof stdClass ) {
+					$value = (array) $value;
+				}
+				if ( ! is_array( $value ) ) {
+					continue;
+				}
+
+				$property_schemas = array();
+				foreach ( $value as $property_name => $property_schema ) {
+					$property_schema = $this->clean_schema_node( $property_schema, $strip_readonly, $output_context );
+					if ( empty( $property_schema ) ) {
+						continue;
+					}
+					$property_schemas[ $property_name ] = $property_schema;
+				}
+
+				if ( ! empty( $property_schemas ) ) {
+					$clean[ $key ] = $property_schemas;
+				}
 				continue;
 			}
-			if ( is_array( $value ) ) {
-				$value = $this->clean_schema_node( $value, $strip_readonly );
+
+			if ( in_array( $key, array( 'oneOf', 'anyOf', 'allOf', 'prefixItems' ), true ) ) {
+				if ( $value instanceof stdClass ) {
+					$value = (array) $value;
+				}
+				if ( ! is_array( $value ) ) {
+					continue;
+				}
+
+				$schema_members = array();
+				foreach ( $value as $member ) {
+					$member = $this->clean_schema_node( $member, $strip_readonly, $output_context );
+					if ( empty( $member ) ) {
+						continue;
+					}
+
+					$schema_members[] = $member;
+				}
+
+				if ( ! empty( $schema_members ) ) {
+					$clean[ $key ] = $schema_members;
+				}
+				continue;
+			}
+
+			if ( in_array( $key, array( 'items', 'additionalItems', 'additionalProperties', 'unevaluatedProperties', 'contains', 'propertyNames', 'not', 'if', 'then', 'else' ), true ) ) {
+				if ( is_bool( $value ) ) {
+					$clean[ $key ] = $value;
+					continue;
+				}
+
+				$value = $this->clean_schema_node( $value, $strip_readonly, $output_context );
+				if ( ! empty( $value ) ) {
+					$clean[ $key ] = $value;
+				}
+				continue;
+			}
+
+			if ( is_array( $value ) || $value instanceof stdClass ) {
+				$value = $this->clean_schema_data_value( $value );
+			} elseif ( $value instanceof Closure || is_object( $value ) ) {
+				continue;
 			}
 			$clean[ $key ] = $value;
 		}
 
-		// Keep object-valued schema keywords as JSON objects even when they clean out
-		// to empty. PHP serializes an empty array as `[]`, but JSON Schema expects `{}`
-		// here and strict validators (AJV) reject `properties: []`,
-		// `additionalProperties: []`, `items: []`, etc. A boolean `additionalProperties`
-		// is left untouched (it is not an array).
+		// Omitting an empty schema-map keyword is equivalent to an empty `{}` schema for
+		// these positions, while remaining valid for WordPress's array-based validator.
 		foreach ( array( 'properties', 'patternProperties', 'additionalProperties', 'items' ) as $object_keyword ) {
 			if ( ! array_key_exists( $object_keyword, $clean ) || ! is_array( $clean[ $object_keyword ] ) || ! empty( $clean[ $object_keyword ] ) ) {
 				continue;
 			}
 
-			$clean[ $object_keyword ] = new stdClass();
+			unset( $clean[ $object_keyword ] );
 		}
 
 		// Drop `oneOf`/`anyOf`/`allOf` members that cleaned out to empty: an empty `{}`
@@ -914,6 +1080,32 @@ class Rest_Route_Ability extends WP_Ability {
 		}
 
 		return $clean;
+	}
+
+	/**
+	 * Removes non-serializable values from array-valued schema data without
+	 * interpreting caller-defined keys as schema keywords.
+	 *
+	 * @since 0.1.0
+	 *
+	 * @param array<array-key, mixed>|\stdClass $value The data value to clean.
+	 * @return array<array-key, mixed>|\stdClass The JSON-serializable data value.
+	 */
+	protected function clean_schema_data_value( $value ) {
+		$is_object = $value instanceof stdClass;
+		$items     = $is_object ? (array) $value : $value;
+		$clean     = array();
+		foreach ( $items as $key => $item ) {
+			if ( is_array( $item ) || $item instanceof stdClass ) {
+				$item = $this->clean_schema_data_value( $item );
+			} elseif ( $item instanceof Closure || is_object( $item ) ) {
+				continue;
+			}
+
+			$clean[ $key ] = $item;
+		}
+
+		return $is_object ? (object) $clean : $clean;
 	}
 
 	/**
@@ -986,6 +1178,11 @@ class Rest_Route_Ability extends WP_Ability {
 			return $request;
 		}
 
+		$route_identity = $this->check_route_identity( $request );
+		if ( is_wp_error( $route_identity ) ) {
+			return $route_identity;
+		}
+
 		$response = rest_do_request( $request );
 		if ( $response->is_error() ) {
 			return $response->as_error();
@@ -1016,6 +1213,68 @@ class Rest_Route_Ability extends WP_Ability {
 	}
 
 	/**
+	 * Confirms that WordPress will dispatch the concrete path to the configured route.
+	 *
+	 * A concrete path can match more than one registered regex. The REST server uses
+	 * registration order, so dispatching without this check could run a sibling route's
+	 * permission callback and handler instead of the route the ability was built from.
+	 * This mirrors the server's route/method selection without invoking any callbacks.
+	 *
+	 * @since 0.1.2
+	 *
+	 * @param \WP_REST_Request $request The prepared concrete request.
+	 * @return true|\WP_Error True when the configured route owns the path, or an error on a conflict.
+	 */
+	protected function check_route_identity( WP_REST_Request $request ) {
+		$method = $request->get_method();
+		$path   = $request->get_route();
+		$server = rest_get_server();
+
+		$with_namespace = array();
+		$path_prefix    = trailingslashit( ltrim( $path, '/' ) );
+		foreach ( $server->get_namespaces() as $namespace ) {
+			if ( 0 !== strpos( $path_prefix, $namespace ) ) {
+				continue;
+			}
+
+			$with_namespace[] = $server->get_routes( $namespace );
+		}
+
+		$routes = ! empty( $with_namespace )
+			? array_merge( ...$with_namespace )
+			: $server->get_routes();
+
+		foreach ( $routes as $route => $handlers ) {
+			if ( 1 !== preg_match( '@^' . $route . '$@i', $path ) ) {
+				continue;
+			}
+
+			foreach ( $handlers as $handler ) {
+				$checked_method = $method;
+				if ( 'HEAD' === $method && empty( $handler['methods']['HEAD'] ) ) {
+					$checked_method = 'GET';
+				}
+				if ( empty( $handler['methods'][ $checked_method ] ) ) {
+					continue;
+				}
+
+				if ( $this->resolved_route_key === $route ) {
+					return true;
+				}
+
+				return new WP_Error(
+					'rest_ability_route_mismatch',
+					__( 'The request path resolves to a different REST route than the route configured for this ability.', 'abilities-rest-adapter' ),
+					array( 'status' => 409 )
+				);
+			}
+		}
+
+		// Let the REST server return its canonical rest_no_route error when no route matches.
+		return true;
+	}
+
+	/**
 	 * Whether a value is a zero-indexed sequential array (a JSON list).
 	 *
 	 * Only a list is wrapped in the collection envelope, so a non-array or
@@ -1040,8 +1299,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * Builds the REST request: the concrete path plus the remaining params.
 	 *
 	 * Applies the developer's `input_callback` (if any) to the params first, then
-	 * substitutes path captures with per-capture-aware encoding (see
-	 * {@see encode_capture()}); the keys consumed as captures are set as URL params
+	 * substitutes path captures through {@see Route_Pattern}; the keys consumed as captures are set as URL params
 	 * (so dispatch's permission callback and handler read them) and removed from the
 	 * body/query params. Exactly the supplied keys are forwarded — no schema defaults
 	 * are injected, so an explicit empty string stays an empty string.
@@ -1054,7 +1312,7 @@ class Rest_Route_Ability extends WP_Ability {
 	 * @since 0.1.0
 	 *
 	 * @param mixed $input The ability input.
-	 * @return \WP_REST_Request|\WP_Error The prepared request, or a `WP_Error` if the input callback rejects it or returns a non-array value, or {@see substitute_captures()} rejects a path capture (missing, non-scalar, or not fitting the route pattern).
+	 * @return \WP_REST_Request|\WP_Error The prepared request, or a `WP_Error` if the input callback rejects it or returns a non-array value, or route-pattern substitution rejects a path capture (missing, non-scalar, or not fitting the route pattern).
 	 */
 	protected function build_request( $input ) {
 		$input = is_array( $input ) ? $input : array();
@@ -1080,7 +1338,15 @@ class Rest_Route_Ability extends WP_Ability {
 			$input = $transformed;
 		}
 
-		$path = $this->substitute_captures( $this->resolved_route_key, $input );
+		if ( null === $this->route_pattern ) {
+			return new WP_Error(
+				'rest_ability_route_not_resolved',
+				__( 'The REST route pattern is not available for this ability.', 'abilities-rest-adapter' ),
+				array( 'status' => 500 )
+			);
+		}
+
+		$path = $this->route_pattern->substitute( $input );
 		if ( is_wp_error( $path ) ) {
 			return $path;
 		}
@@ -1108,255 +1374,6 @@ class Rest_Route_Ability extends WP_Ability {
 	}
 
 	/**
-	 * Scans a `(?P<name>…)` capture group's body to just past its closing `)`.
-	 *
-	 * A balanced-parenthesis scan, not a naive `[^)]+` regex: real route patterns
-	 * nest groups and character classes (e.g. the FSE template id, whose capture
-	 * body holds a `(?:…)` group), so the first `)` is not the group's end. The
-	 * scan honors backslash escapes and skips `[...]` character classes (where `)`
-	 * is a literal). The single capture scan {@see iterate_captures()} uses it.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $route            The registered route regex.
-	 * @param int    $subpattern_start Offset of the first character inside the capture group.
-	 * @param int    $length           The route length (`strlen( $route )`).
-	 * @return array{0: int, 1: int} The `[end_offset, depth]`: the offset just past the group's
-	 *                               closing `)`, and the residual nesting depth (0 = closed cleanly).
-	 */
-	protected function find_capture_end( string $route, int $subpattern_start, int $length ): array {
-		$depth = 1;
-		$pos   = $subpattern_start;
-		while ( $pos < $length && $depth > 0 ) {
-			$char = $route[ $pos ];
-			if ( '\\' === $char ) {
-				$pos += 2;
-				continue;
-			}
-			if ( '[' === $char ) {
-				++$pos;
-				// In PCRE a `]` is a literal when it is the first class member (after an
-				// optional negating `^`), so always consume one leading member — escaping
-				// if it is backslashed — before scanning for the closing `]`. Otherwise a
-				// class like `[])]` or `[^]]` ends the scan one bracket too early.
-				if ( $pos < $length && '^' === $route[ $pos ] ) {
-					++$pos;
-				}
-				if ( $pos < $length && '\\' === $route[ $pos ] ) {
-					++$pos;
-				}
-				++$pos;
-				while ( $pos < $length && ']' !== $route[ $pos ] ) {
-					if ( '\\' === $route[ $pos ] ) {
-						++$pos;
-					}
-					++$pos;
-				}
-			} elseif ( '(' === $char ) {
-				++$depth;
-			} elseif ( ')' === $char ) {
-				--$depth;
-			}
-			++$pos;
-		}
-
-		return array( $pos, $depth );
-	}
-
-	/**
-	 * Iterates the `(?P<name>…)` path-capture groups in a route regex.
-	 *
-	 * The single capture scan that {@see substitute_captures()} and
-	 * {@see capture_specs()} both consume: locate each named group with `preg_match`,
-	 * find its balanced end with {@see find_capture_end()}, slice its sub-pattern, and
-	 * advance past it. Yields one record per capture in source order.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $route The registered route regex.
-	 * @return iterable<array{name: string, group_start: int, group_end: int, subpattern: string, depth: int}>
-	 *     Per capture: its name; the offset of the opening `(`; the offset just past the
-	 *     closing `)`; the sub-pattern between them; and the residual nesting depth from
-	 *     {@see find_capture_end()} (0 = the group closed cleanly).
-	 */
-	protected function iterate_captures( string $route ): iterable {
-		$offset = 0;
-		$length = strlen( $route );
-
-		while ( preg_match( '/\(\?P<([^>]+)>/', $route, $matches, PREG_OFFSET_CAPTURE, $offset ) ) {
-			$group_start      = (int) $matches[0][1];
-			$subpattern_start = $group_start + strlen( $matches[0][0] );
-
-			[ $group_end, $depth ] = $this->find_capture_end( $route, $subpattern_start, $length );
-
-			yield array(
-				'name'        => $matches[1][0],
-				'group_start' => $group_start,
-				'group_end'   => $group_end,
-				'subpattern'  => substr( $route, $subpattern_start, $group_end - 1 - $subpattern_start ),
-				'depth'       => $depth,
-			);
-
-			$offset = $group_end;
-		}
-	}
-
-	/**
-	 * Substitutes `(?P<name>…)` path captures with encoded input values.
-	 *
-	 * Scans the captures with {@see iterate_captures()}. A missing or non-scalar
-	 * capture is a 400 input error. A scalar value that {@see encode_capture()} must
-	 * escape does not fit its own sub-pattern, so no route would match the resulting
-	 * path over HTTP — that is a `rest_no_route` 404, refused here rather than
-	 * dispatched, so dispatch and a standalone `check_permissions()` never report an
-	 * authorization verdict for a path HTTP would never route.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string               $route The registered route regex.
-	 * @param array<string, mixed> $input The ability input.
-	 * @return array{0: string, 1: array<string, string>}|\WP_Error The `[path, consumed]` — `consumed` maps each
-	 *                                                              consumed capture name to its path value — or a `WP_Error`.
-	 */
-	protected function substitute_captures( string $route, array $input ) {
-		$result   = '';
-		$offset   = 0;
-		$consumed = array();
-		$missing  = array();
-		$invalid  = array();
-		$no_match = array();
-
-		foreach ( $this->iterate_captures( $route ) as $capture ) {
-			$name        = $capture['name'];
-			$group_start = $capture['group_start'];
-			$group_end   = $capture['group_end'];
-
-			$result .= substr( $route, $offset, $group_start - $offset );
-
-			if ( 0 === $capture['depth'] && array_key_exists( $name, $input ) && is_scalar( $input[ $name ] ) ) {
-				$encoded           = $this->encode_capture( (string) $input[ $name ], $capture['subpattern'] );
-				$result           .= $encoded;
-				$consumed[ $name ] = $encoded;
-
-				// A value encode_capture() had to escape cannot satisfy its own sub-pattern,
-				// so over HTTP no route matches this path — a 404 before any permission
-				// callback runs. Flag it (reported below) rather than dispatching it.
-				if ( (string) $input[ $name ] !== $encoded ) {
-					$no_match[] = $name;
-				}
-			} elseif ( 0 === $capture['depth'] && array_key_exists( $name, $input ) ) {
-				$invalid[] = $name;
-				$result   .= substr( $route, $group_start, $group_end - $group_start );
-			} else {
-				$missing[] = $name;
-				$result   .= substr( $route, $group_start, $group_end - $group_start );
-			}
-
-			$offset = $group_end;
-		}
-
-		$result .= substr( $route, $offset );
-
-		if ( ! empty( $invalid ) ) {
-			return new WP_Error(
-				'rest_ability_invalid_route_param',
-				sprintf(
-					/* translators: %s: comma-separated list of parameter names. */
-					__( 'Path parameter(s) must be a scalar value: %s', 'abilities-rest-adapter' ),
-					implode( ', ', $invalid )
-				),
-				array( 'status' => 400 )
-			);
-		}
-
-		if ( ! empty( $missing ) ) {
-			return new WP_Error(
-				'rest_ability_missing_route_param',
-				sprintf(
-					/* translators: %s: comma-separated list of parameter names. */
-					__( 'Missing required path parameter(s): %s', 'abilities-rest-adapter' ),
-					implode( ', ', $missing )
-				),
-				array( 'status' => 400 )
-			);
-		}
-
-		if ( ! empty( $no_match ) ) {
-			return new WP_Error(
-				'rest_no_route',
-				sprintf(
-					/* translators: %s: path parameter name. */
-					__( 'The "%s" path parameter does not fit the route pattern; no REST route matches it.', 'abilities-rest-adapter' ),
-					$no_match[0]
-				),
-				array( 'status' => 404 )
-			);
-		}
-
-		return array( $result, $consumed );
-	}
-
-	/**
-	 * Encodes a single capture value against its own sub-pattern.
-	 *
-	 * REST dispatch never URL-decodes the path, so the value reaches the handler
-	 * verbatim. If the raw value fully matches the capture's sub-pattern it round
-	 * trips and is left raw; otherwise it is `rawurlencode`d so it cannot satisfy
-	 * the sub-pattern and traverse to another route (fail closed). For a numeric
-	 * capture, encoding is a no-op.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $value      The capture value.
-	 * @param string $subpattern The capture's regex sub-pattern.
-	 * @return string The value, raw or `rawurlencode`d.
-	 */
-	protected function encode_capture( string $value, string $subpattern ): string {
-		// Mirror dispatch's matcher: same delimiter and case-insensitive flag.
-		// Silenced so a malformed sub-pattern fails closed (encode) instead of warning.
-		$matches_raw = @preg_match( '@^(?:' . $subpattern . ')$@i', $value ); // phpcs:ignore Generic.PHP.NoSilencedErrors.Forbidden, WordPress.PHP.NoSilencedErrors.Discouraged -- Fail closed (encode) on an uncompilable sub-pattern.
-		if ( 1 === $matches_raw ) {
-			return $value;
-		}
-		return rawurlencode( $value );
-	}
-
-	/**
-	 * Extracts capture names mapped to their sub-patterns from a route regex.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $route The registered route regex.
-	 * @return array<string, string> Map of capture name to sub-pattern.
-	 */
-	protected function capture_specs( string $route ): array {
-		$specs = array();
-		foreach ( $this->iterate_captures( $route ) as $capture ) {
-			$specs[ $capture['name'] ] = $capture['subpattern'];
-		}
-
-		return $specs;
-	}
-
-	/**
-	 * Whether a capture sub-pattern is a recognized digit-only form.
-	 *
-	 * Recognizes `\d`, `[\d]`, and `[0-9]` with an optional `+`/`*` or
-	 * `{n}`/`{n,}`/`{n,m}` quantifier. This is a conservative classifier for the
-	 * schema type hint only: an unrecognized but genuinely numeric pattern falls
-	 * back to `string`, which still accepts the value at dispatch — it just
-	 * advertises a looser type. It never widens a non-numeric pattern to `integer`.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @param string $subpattern The capture's regex sub-pattern.
-	 * @return bool True if the sub-pattern is a recognized digit-only form.
-	 */
-	protected function is_numeric_subpattern( string $subpattern ): bool {
-		return (bool) preg_match( '/^(?:\[\\\\d\]|\\\\d|\[0-9\])(?:[+*]|\{\d+(?:,\d*)?\})?$/', $subpattern );
-	}
-
-	/**
 	 * Returns a developer-supplied schema arg, or null if none is set.
 	 *
 	 * @since 0.1.0
@@ -1368,16 +1385,5 @@ class Rest_Route_Ability extends WP_Ability {
 		return isset( $this->rest_args[ $key ] ) && is_array( $this->rest_args[ $key ] )
 			? $this->rest_args[ $key ]
 			: null;
-	}
-
-	/**
-	 * Whether a callable `output_callback` is set.
-	 *
-	 * @since 0.1.0
-	 *
-	 * @return bool True if a callable `output_callback` is present.
-	 */
-	protected function has_output_callback(): bool {
-		return is_callable( $this->rest_args['output_callback'] ?? null );
 	}
 }

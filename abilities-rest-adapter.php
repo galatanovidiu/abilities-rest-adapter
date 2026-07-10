@@ -3,7 +3,7 @@
  * Plugin Name:       Abilities REST Adapter
  * Plugin URI:        https://github.com/galatanovidiu/abilities-rest-adapter
  * Description:       Defines an Abilities API ability by reusing an existing REST API route — its schema, validation, permission check, and handler — instead of re-implementing them. Dispatches the real route via rest_do_request().
- * Version:           0.1.1
+ * Version:           0.1.2
  * Requires at least: 6.9
  * Requires PHP:      7.4
  * Author:            Ovidiu Galatan
@@ -27,7 +27,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  * Define the plugin constants.
  */
 function constants(): void {
-	define( 'ABILITIES_REST_ADAPTER_VERSION', '0.1.1' );
+	define( 'ABILITIES_REST_ADAPTER_VERSION', '0.1.2' );
 	define( 'ABILITIES_REST_ADAPTER_FILE', __FILE__ );
 	define( 'ABILITIES_REST_ADAPTER_DIR', plugin_dir_path( __FILE__ ) );
 }

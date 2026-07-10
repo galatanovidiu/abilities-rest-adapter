@@ -27,10 +27,9 @@ if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
 	 * required, exactly as for `wp_register_ability()`; the adapter does not invent
 	 * them, and there is no default category — register your category first.
 	 *
-	 * Writes (any method other than GET) must declare `destructive` and
-	 * `idempotent` annotations under `meta.annotations`; omitting them still
-	 * registers the ability but triggers `_doing_it_wrong` and leaves them unset,
-	 * since the adapter will not guess a safety hint that could be wrong.
+	 * Every non-readonly operation must declare boolean `destructive` and
+	 * `idempotent` annotations under `meta.annotations`; missing, non-boolean, or
+	 * contradictory safety metadata fails registration.
 	 *
 	 * The adapter facilitates; it does not reshape on its own. Use the callbacks
 	 * and schema args to adapt the route to your ability. An opt-in
@@ -60,10 +59,10 @@ if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
 	 *                                     Reshapes a successful response (runs last, over the body or the
 	 *                                     `{ items, total, total_pages }` envelope); not called on an error.
 	 *                                     `$input` is the original ability input, before any `input_callback`.
+	 *                                     Requires a non-empty `output_schema`.
 	 *     @type array    $input_schema    Optional. Replaces the derived input schema (standard ability schema).
-	 *     @type array    $output_schema   Optional. Replaces the derived output schema (standard ability schema).
-	 *                                     When an `output_callback` is set and this is omitted, no output schema
-	 *                                     is advertised and output validation is skipped.
+	 *     @type array    $output_schema   Optional unless `output_callback` is callable. Replaces the derived
+	 *                                     output schema and validates the reshaped result.
 	 *     @type callable $require_permission Optional. `fn( mixed $input ): bool|WP_Error`. An additive permission
 	 *                                     floor, enforced in the ability's permission phase — the ONLY permission
 	 *                                     check that runs there. The route's own permission check runs later, at
@@ -114,6 +113,11 @@ if ( ! function_exists( 'wp_register_ability_from_rest_route' ) ) {
 			return null;
 		}
 
-		return wp_register_ability( $name, Rest_Route_Ability::build_args( $name, $args ) );
+		$ability_args = Rest_Route_Ability::build_args( $name, $args );
+		if ( empty( $ability_args ) ) {
+			return null;
+		}
+
+		return wp_register_ability( $name, $ability_args );
 	}
 }

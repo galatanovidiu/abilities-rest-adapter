@@ -2,8 +2,7 @@
 /**
  * Safety-annotation derivation.
  *
- * A write without `destructive`/`idempotent` registers but warns and leaves them
- * null (unknown = ask-first, never a false "safe"). `readonly` is derived from the
+ * A write without `destructive`/`idempotent` fails registration. `readonly` is derived from the
  * method — forced false for a write, true for a GET unless the developer opts out —
  * so a developer cannot mislabel a write as safe.
  *
@@ -24,20 +23,13 @@ final class SafetyAnnotationsTest extends AbilityTestCase {
 	private const ROUTE = '/wp/v2/posts/(?P<id>[\d]+)';
 
 	/**
-	 * A write missing annotations registers, warns, and leaves the hints null.
+	 * A write missing annotations fails registration rather than exposing unknown hints.
 	 */
-	public function test_unannotated_write_registers_with_warning(): void {
+	public function test_unannotated_write_fails_registration_with_warning(): void {
 		$this->setExpectedIncorrectUsage( 'wp_register_ability_from_rest_route' );
 
 		$trash = $this->register_ability( 'probe/trash', array( 'route' => self::ROUTE, 'method' => 'DELETE' ) );
-		$this->assertNotNull( $trash, 'the write still registers' );
-
-		$annotations = $trash->get_meta_item( 'annotations' );
-		$this->assertArrayHasKey( 'destructive', $annotations );
-		$this->assertNull( $annotations['destructive'], 'unset destructive stays null, not a false "safe"' );
-		$this->assertArrayHasKey( 'idempotent', $annotations );
-		$this->assertNull( $annotations['idempotent'] );
-		$this->assertFalse( $annotations['readonly'], 'a write is never readonly' );
+		$this->assertNull( $trash, 'a write with unknown safety semantics is not registered' );
 	}
 
 	/**
@@ -57,6 +49,53 @@ final class SafetyAnnotationsTest extends AbilityTestCase {
 		$this->assertFalse( $annotations['destructive'] );
 		$this->assertTrue( $annotations['idempotent'] );
 		$this->assertFalse( $annotations['readonly'] );
+	}
+
+	/**
+	 * Present annotation keys still fail when their values are not real booleans.
+	 */
+	public function test_non_boolean_write_annotations_fail_registration(): void {
+		$this->setExpectedIncorrectUsage( 'wp_register_ability_from_rest_route' );
+
+		$ability = $this->register_ability(
+			'probe/write-string-hints',
+			array(
+				'route'  => self::ROUTE,
+				'method' => 'POST',
+				'meta'   => array(
+					'annotations' => array(
+						'destructive' => 'false',
+						'idempotent'  => 'yes',
+					),
+				),
+			)
+		);
+
+		$this->assertNull( $ability, 'truthy strings cannot become executable safety hints' );
+	}
+
+	/**
+	 * The optional readonly override must also be a real boolean.
+	 */
+	public function test_non_boolean_readonly_annotation_fails_registration(): void {
+		$this->setExpectedIncorrectUsage( 'wp_register_ability_from_rest_route' );
+
+		$ability = $this->register_ability(
+			'probe/read-string-readonly',
+			array(
+				'route'  => '/wp/v2/posts',
+				'method' => 'GET',
+				'meta'   => array(
+					'annotations' => array(
+						'readonly'    => 'false',
+						'destructive' => false,
+						'idempotent'  => true,
+					),
+				),
+			)
+		);
+
+		$this->assertNull( $ability );
 	}
 
 	/**
@@ -87,12 +126,36 @@ final class SafetyAnnotationsTest extends AbilityTestCase {
 			array(
 				'route'  => '/wp/v2/posts',
 				'method' => 'GET',
-				'meta'   => array( 'annotations' => array( 'readonly' => false ) ),
+				'meta'   => array(
+					'annotations' => array(
+						'readonly'    => false,
+						'destructive' => false,
+						'idempotent'  => false,
+					),
+				),
 			)
 		);
 
 		$annotations = $counter->get_meta_item( 'annotations' );
 		$this->assertFalse( $annotations['readonly'], 'an explicit readonly:false on a GET is preserved' );
+	}
+
+	/**
+	 * A side-effecting GET is non-readonly and must declare the remaining hints.
+	 */
+	public function test_side_effecting_get_without_write_annotations_fails_registration(): void {
+		$this->setExpectedIncorrectUsage( 'wp_register_ability_from_rest_route' );
+
+		$ability = $this->register_ability(
+			'probe/view-counter-unknown-risk',
+			array(
+				'route'  => '/wp/v2/posts',
+				'method' => 'GET',
+				'meta'   => array( 'annotations' => array( 'readonly' => false ) ),
+			)
+		);
+
+		$this->assertNull( $ability );
 	}
 
 	/**
@@ -138,10 +201,11 @@ final class SafetyAnnotationsTest extends AbilityTestCase {
 	}
 
 	/**
-	 * A developer's own `destructive`/`idempotent` on a read is preserved, not
-	 * overwritten by the read-only fill.
+	 * A readonly GET cannot carry contradictory destructive/idempotent hints.
 	 */
-	public function test_read_keeps_developer_destructive_and_idempotent(): void {
+	public function test_read_with_contradictory_annotations_fails_registration(): void {
+		$this->setExpectedIncorrectUsage( 'wp_register_ability_from_rest_route' );
+
 		$read = $this->register_ability(
 			'probe/read-declared',
 			array(
@@ -151,9 +215,6 @@ final class SafetyAnnotationsTest extends AbilityTestCase {
 			)
 		);
 
-		$annotations = $read->get_meta_item( 'annotations' );
-		$this->assertTrue( $annotations['readonly'], 'a GET is still read-only' );
-		$this->assertTrue( $annotations['destructive'], 'developer destructive:true on a read is preserved' );
-		$this->assertFalse( $annotations['idempotent'], 'developer idempotent:false on a read is preserved' );
+		$this->assertNull( $read, 'contradictory read annotations are rejected' );
 	}
 }

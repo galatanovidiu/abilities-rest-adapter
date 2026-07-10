@@ -54,16 +54,20 @@ abstract class AbilityTestCase extends WP_UnitTestCase {
 			$args
 		);
 
-		$callback = static function () use ( $name, $args ): void {
-			wp_register_ability_from_rest_route( $name, $args );
+		$ability  = null;
+		$callback = static function () use ( $name, $args, &$ability ): void {
+			$ability = wp_register_ability_from_rest_route( $name, $args );
 		};
 		add_action( 'wp_abilities_api_init', $callback );
 		do_action( 'wp_abilities_api_init' );
 		remove_action( 'wp_abilities_api_init', $callback );
 
-		$this->registered[] = $name;
+		if ( null === $ability ) {
+			return null;
+		}
 
-		return wp_get_ability( $name );
+		$this->registered[] = $name;
+		return $ability;
 	}
 
 	/**
@@ -98,7 +102,7 @@ abstract class AbilityTestCase extends WP_UnitTestCase {
 	 */
 	public function tear_down(): void {
 		foreach ( $this->registered as $name ) {
-			if ( null !== wp_get_ability( $name ) ) {
+			if ( wp_has_ability( $name ) ) {
 				wp_unregister_ability( $name );
 			}
 		}

@@ -128,7 +128,7 @@ It runs **once** per `execute()`, at dispatch — the permission phase runs only
 a **successful** response. It runs last, over the route body or the collection
 envelope. It is **not** called on an error. `$input` is the original ability
 input, before any `input_callback` ran. Return a `WP_Error` to turn a success into
-a failure.
+a failure. A callable `output_callback` requires a non-empty `output_schema`.
 
 ### `input_schema` and `output_schema`
 
@@ -142,10 +142,9 @@ the derived schema is wrong for your ability — for example, when an
 `input_callback` injects parameters the route does not advertise, or an
 `output_callback` reshapes the body.
 
-> **Note:** if you set an `output_callback` but omit `output_schema`, the adapter
-> advertises **no** output schema and core skips output validation (the derived
-> schema would describe the route body, not your reshaped body). Pass an
-> `output_schema` to opt back into a validated output.
+> **Note:** if you set an `output_callback` but omit a non-empty `output_schema`,
+> registration fails. The declared schema is the validated contract for the
+> reshaped result.
 
 > **Note:** the derived output schema describes the `view` context only. If you
 > pin a different context with `input_callback` (e.g. `context => 'edit'`), the
@@ -212,8 +211,8 @@ single-item route returns its body unchanged.
 
 ## Writes and safety annotations
 
-Any method other than GET is a **write**. A write must declare two annotations
-under `meta.annotations`:
+Every non-readonly operation must declare two boolean annotations under
+`meta.annotations`:
 
 ```php
 wp_register_ability_from_rest_route( 'my-plugin/trash-post', array(
@@ -237,13 +236,12 @@ wp_register_ability_from_rest_route( 'my-plugin/trash-post', array(
   know the GET has side effects (an oEmbed proxy, a view counter, a cache regen) you
   may pass `readonly: false` to flag it as not free to call. You can only make a GET
   *more* conservative this way — you can never mark a write safe.
-- **`destructive`** and **`idempotent`** are yours to declare. They describe
-  behavior only you know.
+- **`destructive`** and **`idempotent`** are yours to declare for every
+  non-readonly operation. They describe behavior only you know.
 
-If you omit `destructive`/`idempotent` on a write, the ability **still registers**,
-but the adapter triggers `_doing_it_wrong` and leaves the annotations unset
-(`null`). Unset means "unknown" — a consumer treats an unknown annotation as
-unsafe (ask first), never as a false "safe".
+Missing or non-boolean `destructive`/`idempotent` values fail registration. A
+readonly GET may omit them because the adapter supplies `destructive => false`
+and `idempotent => true`; contradictory read hints also fail registration.
 
 ## How permission errors surface
 
